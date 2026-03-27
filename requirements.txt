@@ -17,3 +17,4 @@ quantstats
 folium
 streamlit-folium
 geopandas
+yaml
