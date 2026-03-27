@@ -1,0 +1,45 @@
+# presets/weights.yaml — 업종별 가중치 프리셋
+# 합계는 반드시 1.0 (scoring.py에서 자동 검증)
+# population: 거주 인구 | floating: 유동인구 | competitor: 경쟁 (음수 효과) | accessibility: 교통 접근성
+
+cafe:
+  population:    0.20
+  floating:      0.40
+  competitor:    0.20
+  accessibility: 0.20
+
+restaurant:
+  population:    0.25
+  floating:      0.35
+  competitor:    0.25
+  accessibility: 0.15
+
+hospital:
+  population:    0.40
+  floating:      0.20
+  competitor:    0.25
+  accessibility: 0.15
+
+convenience:
+  population:    0.30
+  floating:      0.30
+  competitor:    0.20
+  accessibility: 0.20
+
+mart:
+  population:    0.35
+  floating:      0.25
+  competitor:    0.20
+  accessibility: 0.20
+
+pharmacy:
+  population:    0.35
+  floating:      0.20
+  competitor:    0.30
+  accessibility: 0.15
+
+default:
+  population:    0.25
+  floating:      0.25
+  competitor:    0.25
+  accessibility: 0.25
