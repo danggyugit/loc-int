@@ -1,0 +1,17 @@
+streamlit
+simfin
+pandas
+numpy
+scikit-learn
+matplotlib
+plotly
+streamlit
+pandas
+finvizfinance
+yfinance
+numpy
+lxml
+requests
+seaborn
+quantstats
+folium
