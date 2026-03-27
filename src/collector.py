@@ -622,6 +622,7 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         f"경쟁업체 {len(competitor)}건 | "
         f"교통 {len(transport)}건 | "
         f"주차장 {len(parking)}건 | "
+        f"상권 다양성 {len(diversity)}건 | "
         f"인구 {len(population) if population is not None else 0}건 ({pop_source}) | "
         f"종사자 {len(workplace) if workplace is not None else 0}건 | "
         f"수집 방식: {'키워드' if keyword else '카테고리'}"
@@ -631,6 +632,7 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         "competitor": competitor,
         "transport":  transport,
         "parking":    parking,
+        "diversity":  diversity,
         "population": population,
         "workplace":  workplace,
         "pop_source": pop_source,

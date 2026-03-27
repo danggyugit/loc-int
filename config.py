@@ -81,9 +81,11 @@ SGIS_GRID_LEVELS = {
 
 # ─── 점수화 기본 가중치 ───────────────────────────────────
 DEFAULT_WEIGHTS = {
-    "population":    0.20,
-    "floating":      0.20,
+    "population":    0.15,
+    "floating":      0.15,
     "workplace":     0.15,
-    "competitor":    0.25,
-    "accessibility": 0.20,
+    "competitor":    0.20,
+    "accessibility": 0.15,
+    "parking":       0.10,
+    "diversity":     0.10,
 }

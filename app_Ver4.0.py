@@ -1,10 +1,10 @@
-# app_Ver2.0.py — 입지 선정 분석 툴 v2.0 (Streamlit 앱)
-# 실행: streamlit run app_Ver2.0.py
+# app_Ver4.0.py — 입지 선정 분석 툴 v4.0 (Streamlit 앱)
+# 실행: streamlit run app_Ver4.0.py
 #
-# v1 대비 개선 사항:
-#   1. 범례 + 레이어 토글을 좌하단 단일 커스텀 컨트롤로 통합
-#   2. 차트 제목 한국어 폰트 수정 (Malgun Gothic)
-#   3. 후보지 테이블 행 클릭 → 지도에서 해당 위치 강조 표시
+# v3 대비 개선 사항:
+#   1. 교통 가중치: 지하철역(×3) > 버스정류장(×1) 차등 반영
+#   2. 상권 다양성 지수: 격자별 업종 카테고리 다양성(0~6) 팩터 추가
+#   3. 7팩터 점수 모델: 인구·유동·직장·경쟁·접근성·주차·다양성
 
 import os
 import sys
@@ -31,7 +31,7 @@ from streamlit_folium import st_folium
 # ─────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="입지 선정 분석 툴 v2",
+    page_title="입지 선정 분석 툴 v4",
     page_icon="📍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -51,10 +51,10 @@ PRESETS = {
 # ─────────────────────────────────────────────────────────
 
 for _key, _default in [
-    ("analysis_cache", None),   # 분석 결과 캐시
-    ("selected_rank",  None),   # 클릭된 후보지 순위
-    ("map_center",     None),   # 지도 중심 (선택 후보지 기준)
-    ("map_zoom",       13),     # 지도 줌 레벨
+    ("analysis_cache", None),
+    ("selected_rank",  None),
+    ("map_center",     None),
+    ("map_zoom",       13),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _default
@@ -113,10 +113,9 @@ with st.sidebar:
 # 메인 화면
 # ─────────────────────────────────────────────────────────
 
-st.title("📍 입지 선정 분석 툴 v2.0")
+st.title("📍 입지 선정 분석 툴 v4.0")
 st.caption("지역과 업종을 입력하면 카카오 API로 데이터를 수집하고 최적 입지를 분석합니다.")
 
-# 웰컴 화면 — 분석 결과도 없고 버튼도 안 눌린 경우
 if not run_btn and st.session_state["analysis_cache"] is None:
     st.info("왼쪽 사이드바에서 지역·업종·셀 크기를 설정하고 **분석 시작** 버튼을 누르세요.")
     st.markdown("""
@@ -127,19 +126,18 @@ if not run_btn and st.session_state["analysis_cache"] is None:
     4. 격자 셀 크기 선택 (작을수록 정밀, 클수록 빠름)
     5. 분석 시작 클릭
 
-    **v2.0 개선 사항**
-    - 지도 좌하단: 범례 + 레이어 ON/OFF 통합 컨트롤
-    - 상위 후보지 차트 제목 한국어 깨짐 수정
-    - 후보지 테이블 행 클릭 → 지도에서 해당 위치 주황색 마커로 강조
+    **v4.0 개선 사항**
+    - 교통 가중치: 지하철역(×3) > 버스정류장(×1) 차등 적용
+    - 상권 다양성 지수: 격자 내 업종 카테고리 다양성(카페·음식점·편의점·약국·마트·병원) 반영
+    - 7팩터 점수 모델: 인구·유동·직장·경쟁·접근성·주차·다양성
     """)
     st.stop()
 
 # ─────────────────────────────────────────────────────────
-# 분석 실행 (run_btn 눌린 경우만)
+# 분석 실행
 # ─────────────────────────────────────────────────────────
 
 if run_btn:
-    # 입력 검증
     if not kakao_key:
         st.error("카카오 REST API 키를 입력하세요.")
         st.stop()
@@ -165,6 +163,8 @@ if run_btn:
         transport  = data["transport"]
         population = data["population"]
         workplace  = data.get("workplace")
+        parking    = data.get("parking")
+        diversity  = data.get("diversity")
         pop_source = data.get("pop_source", "unknown")
         progress.progress(30, text="격자 분석 중...")
 
@@ -176,10 +176,12 @@ if run_btn:
             competitor_gdf=competitor,
             transport_gdf=transport,
             workplace_gdf=workplace,
+            parking_gdf=parking,
+            diversity_gdf=diversity,
         )
         progress.progress(55, text="점수화 중...")
 
-        # Step 3. 점수화 (프로파일 기반 — preset 또는 keyword 자동 분류)
+        # Step 3. 점수화
         from src.scoring import score_and_rank
         scored, top, profile = score_and_rank(
             grid,
@@ -201,7 +203,7 @@ if run_btn:
         )
         progress.progress(90, text="차트 생성 중...")
 
-        # Step 5. 차트 저장 (rcParams 이미 설정됨 → 한국어 정상 렌더링)
+        # Step 5. 차트 저장
         out_dir    = Path("output")
         out_dir.mkdir(exist_ok=True)
         safe_label = label.replace(" ", "_")
@@ -219,7 +221,6 @@ if run_btn:
         progress.progress(100, text="완료!")
         progress.empty()
 
-        # 분석 결과 캐시에 저장
         st.session_state["analysis_cache"] = {
             "region":          region,
             "label":           label,
@@ -236,9 +237,10 @@ if run_btn:
             "top_n":           top_n,
             "profile":         profile,
             "workplace":       workplace,
+            "parking":         parking,
+            "diversity":       diversity,
             "pop_source":      pop_source,
         }
-        # 선택 상태 초기화
         st.session_state["selected_rank"] = None
         st.session_state["map_center"]    = None
         st.session_state["map_zoom"]      = 13
@@ -271,6 +273,8 @@ top_n_cached    = cache["top_n"]
 prefix          = cache["prefix"]
 profile         = cache.get("profile", {})
 workplace       = cache.get("workplace")
+parking         = cache.get("parking")
+diversity       = cache.get("diversity")
 pop_source      = cache.get("pop_source", "unknown")
 
 n_hotspot = (cluster_summary["type"] == "핫스팟").sum()
@@ -279,13 +283,15 @@ n_gap     = gap_gdf["is_gap"].sum()
 # 요약 지표 카드
 st.markdown("---")
 _pop_src_label = {"sgis": "SGIS 실인구", "apartment_proxy": "아파트 proxy", "none": "없음"}
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
 c1.metric("분석 셀 수",      f"{len(scored):,}개")
 c2.metric("인구 데이터",     _pop_src_label.get(pop_source, pop_source))
 c3.metric("경쟁업체",        f"{len(competitor)}건")
 c4.metric("교통 인프라",     f"{len(transport)}건")
-c5.metric("핫스팟 클러스터", f"{n_hotspot}개")
-c6.metric("경쟁 공백 지역",  f"{n_gap}셀")
+c5.metric("주차장",          f"{len(parking) if parking is not None else 0}건")
+c6.metric("상권 업종",       f"{len(diversity) if diversity is not None else 0}건")
+c7.metric("핫스팟 클러스터", f"{n_hotspot}개")
+c8.metric("경쟁 공백 지역",  f"{n_gap}셀")
 
 # 적용된 점수화 프로파일 정보
 if profile:
@@ -302,12 +308,20 @@ if profile:
         "default": "기본값",
         "cli":     "직접 입력",
     }
+    _demo_label = {
+        "all":         "전 연령",
+        "children":    "유소년(0~14세) 가중",
+        "elderly":     "고령(65세+) 가중",
+        "young_adult": "생산가능인구(15~64세) 가중",
+    }
     comp_mode = profile.get("competition_mode", "tolerate")
+    demo_target = profile.get("demographic_target", "all")
     with st.expander("📐 적용된 점수화 프로파일", expanded=False):
-        pc1, pc2, pc3 = st.columns(3)
+        pc1, pc2, pc3, pc4 = st.columns(4)
         pc1.markdown(f"**프로파일**  \n`{profile.get('profile_key', '-')}`")
         pc2.markdown(f"**경쟁 효과**  \n{_mode_label.get(comp_mode, comp_mode)}")
-        pc3.markdown(f"**분류 출처**  \n{_src_label.get(profile.get('source',''), profile.get('source',''))}")
+        pc3.markdown(f"**타겟 연령**  \n{_demo_label.get(demo_target, demo_target)}")
+        pc4.markdown(f"**분류 출처**  \n{_src_label.get(profile.get('source',''), profile.get('source',''))}")
         st.caption(profile.get("description", ""))
         w = profile.get("weights", {})
         if w:
@@ -316,7 +330,9 @@ if profile:
                 f"유동 **{w.get('floating',0):.0%}** | "
                 f"직장 **{w.get('workplace',0):.0%}** | "
                 f"경쟁 **{w.get('competitor',0):.0%}** | "
-                f"접근성 **{w.get('accessibility',0):.0%}**"
+                f"접근성 **{w.get('accessibility',0):.0%}** | "
+                f"주차 **{w.get('parking',0):.0%}** | "
+                f"다양성 **{w.get('diversity',0):.0%}**"
             )
 
 st.markdown("---")
@@ -328,7 +344,6 @@ selected_rank = st.session_state["selected_rank"]
 map_center    = st.session_state["map_center"]
 map_zoom      = st.session_state["map_zoom"]
 
-# 선택된 후보지가 있으면 캡션에 표시
 if selected_rank is not None:
     st.info(f"지도에서 **#{selected_rank}번 후보지**가 강조 표시됩니다. 다른 행을 클릭하거나 선택 해제하세요.")
 
@@ -345,7 +360,6 @@ folium_map = build_combined_folium_map(
     selected_rank=selected_rank,
 )
 
-# 지도 + 차트 2열
 map_col, chart_col = st.columns([2, 1])
 
 with map_col:
@@ -362,17 +376,20 @@ st.markdown("---")
 st.subheader("📋 후보지 상세 데이터")
 st.caption("행을 클릭하면 지도에서 해당 후보지를 주황색으로 강조합니다.")
 
-display_cols = ["rank", "grid_id", "population", "floating", "workplace", "competitor_cnt", "transport_cnt", "score"]
+display_cols = ["rank", "grid_id", "population", "floating", "workplace",
+                "competitor_cnt", "transport_score", "parking_cnt", "diversity", "score"]
 available    = [c for c in display_cols if c in top.columns]
 
 selection = st.dataframe(
     top[available].style.format({
-        "score":          "{:.3f}",
-        "population":     "{:.0f}",
-        "floating":       "{:.0f}",
-        "workplace":      "{:.0f}",
-        "competitor_cnt": "{:.0f}",
-        "transport_cnt":  "{:.0f}",
+        "score":           "{:.3f}",
+        "population":      "{:.0f}",
+        "floating":        "{:.0f}",
+        "workplace":       "{:.0f}",
+        "competitor_cnt":  "{:.0f}",
+        "transport_score": "{:.0f}",
+        "parking_cnt":     "{:.0f}",
+        "diversity":       "{:.0f}",
     }).background_gradient(subset=["score"], cmap="RdYlGn"),
     use_container_width=True,
     hide_index=True,
@@ -395,7 +412,6 @@ if rows:
         st.rerun()
 
 elif st.session_state["selected_rank"] is not None:
-    # 선택 해제
     st.session_state["selected_rank"] = None
     st.session_state["map_center"]    = None
     st.session_state["map_zoom"]      = 13

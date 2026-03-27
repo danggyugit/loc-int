@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# Output (분석 결과 — 사용자마다 다름)
+output/
+
+# Cache
+cache/
+
+# Data (원본·가공 데이터 — 용량 큼)
+data/
+
+# Temp files
+*.tmp
+*.tmp.*
+
+# OS
+Thumbs.db
+.DS_Store

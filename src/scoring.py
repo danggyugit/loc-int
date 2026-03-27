@@ -83,7 +83,7 @@ def load_profile(preset: str | None = None, keyword: str | None = None) -> dict:
 
 
 def _validate_weights(weights: dict) -> None:
-    required = {"population", "floating", "workplace", "competitor", "accessibility", "parking"}
+    required = {"population", "floating", "workplace", "competitor", "accessibility", "parking", "diversity"}
     missing = required - set(weights.keys())
     if missing:
         raise ValueError(f"가중치 항목 누락: {missing}")
@@ -191,8 +191,9 @@ def calc_score(
     float_col: str = "floating",
     work_col:  str = "workplace",
     comp_col:  str = "competitor_cnt",
-    acc_col:   str = "transport_cnt",
+    acc_col:   str = "transport_score",
     park_col:  str = "parking_cnt",
+    div_col:   str = "diversity",
 ) -> gpd.GeoDataFrame:
     """
     격자 GeoDataFrame에 종합 점수(score) 컬럼 추가.
@@ -207,6 +208,7 @@ def calc_score(
               - comp_effect  * w_competitor
               + acc_norm     * w_accessibility
               + park_norm    * w_parking
+              + div_norm     * w_diversity
 
     Returns:
         score 컬럼이 추가된 GeoDataFrame (점수 범위 0~1)
@@ -225,6 +227,7 @@ def calc_score(
     comp_norm  = normalize(out[comp_col])  if comp_col  in out.columns else pd.Series(0.0, index=out.index)
     acc_norm   = normalize(out[acc_col])   if acc_col   in out.columns else pd.Series(0.0, index=out.index)
     park_norm  = normalize(out[park_col])  if park_col  in out.columns else pd.Series(0.0, index=out.index)
+    div_norm   = normalize(out[div_col])   if div_col   in out.columns else pd.Series(0.0, index=out.index)
 
     # 인구통계 타겟 보정 (인구 점수에 곱하기)
     demo_mod = _calc_demographic_modifier(out, demo_target)
@@ -240,6 +243,7 @@ def calc_score(
         - comp_effect * weights["competitor"]
         + acc_norm    * weights["accessibility"]
         + park_norm   * weights["parking"]
+        + div_norm    * weights["diversity"]
     )
 
     # 음수 방지 후 0~1 재정규화
@@ -297,10 +301,9 @@ def score_and_rank(
         weights = json.loads(weights_json)
         _validate_weights(weights)
         # 누락 키 보완 (하위 호환)
-        if "workplace" not in weights:
-            weights["workplace"] = 0.0
-        if "parking" not in weights:
-            weights["parking"] = 0.0
+        for _compat_key in ["workplace", "parking", "diversity"]:
+            if _compat_key not in weights:
+                weights[_compat_key] = 0.0
         profile = {
             "profile_key":          "custom",
             "weights":              weights,
