@@ -16,3 +16,4 @@ seaborn
 quantstats
 folium
 streamlit-folium
+geopandas
