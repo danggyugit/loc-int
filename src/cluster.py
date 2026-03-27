@@ -157,7 +157,7 @@ def summarize_clusters(
 
     for label, group in gdf.groupby(label_col):
         group_tm = gdf_tm.loc[group.index]
-        centroid  = group_tm.union_all().centroid
+        centroid  = group_tm.unary_union.centroid
 
         # 중심 좌표를 WGS84로 재변환
         c_gdf = gpd.GeoDataFrame(geometry=[centroid], crs=CRS_KOREA).to_crs("EPSG:4326")

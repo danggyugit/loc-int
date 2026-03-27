@@ -646,7 +646,7 @@ def collect_all(region: str, category: str = None, keyword: str = None,
 def _make_search_grid(boundary_gdf: gpd.GeoDataFrame, step_m: int) -> list[tuple]:
     """경계 내 격자 중심 좌표 리스트 생성 (API 검색 거점용)."""
     boundary_tm = boundary_gdf.to_crs(CRS_KOREA)
-    unified     = boundary_tm.union_all()
+    unified     = boundary_tm.unary_union
     minx, miny, maxx, maxy = unified.bounds
 
     xs = np.arange(minx + step_m / 2, maxx, step_m)
@@ -665,5 +665,5 @@ def _make_search_grid(boundary_gdf: gpd.GeoDataFrame, step_m: int) -> list[tuple
 
 def _clip_to_boundary(gdf: gpd.GeoDataFrame, boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """경계 폴리곤 내 포인트만 반환."""
-    boundary_union = boundary_gdf.union_all()
+    boundary_union = boundary_gdf.unary_union
     return gdf[gdf.geometry.within(boundary_union)].copy()

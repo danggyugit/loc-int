@@ -367,7 +367,7 @@ def get_sgis_grid_data(
         return None
 
     # 경계 내 포인트만 유지
-    boundary_union = boundary_gdf.union_all()
+    boundary_union = boundary_gdf.unary_union
     pop_gdf = pop_gdf[pop_gdf.geometry.within(boundary_union)].copy()
     work_gdf = work_gdf[work_gdf.geometry.within(boundary_union)].copy()
 

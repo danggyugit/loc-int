@@ -40,7 +40,7 @@ def make_grid(boundary_gdf: gpd.GeoDataFrame, cell_size_m: int = GRID_SIZE_DEFAU
 
     # 미터 단위 연산을 위해 EPSG:5179로 변환
     boundary_tm = boundary_gdf.to_crs(CRS_KOREA)
-    unified = boundary_tm.union_all()   # 전체 경계 합치기
+    unified = boundary_tm.unary_union   # 전체 경계 합치기
 
     minx, miny, maxx, maxy = unified.bounds
 

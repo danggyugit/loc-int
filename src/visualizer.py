@@ -27,7 +27,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def _grid_center(gdf: gpd.GeoDataFrame) -> tuple[float, float]:
     """GeoDataFrame 중심 좌표 반환 (folium 초기 위치용)."""
-    centroid = gdf.union_all().centroid
+    centroid = gdf.unary_union.centroid
     return centroid.y, centroid.x
 
 
