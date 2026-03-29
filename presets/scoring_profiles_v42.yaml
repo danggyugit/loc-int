@@ -1,0 +1,324 @@
+# presets/scoring_profiles_v42.yaml — 9팩터 업종별 입지 점수 산출 프로파일
+# weights 합계 반드시 1.0
+#
+# v4.2 추가 팩터:
+#   income — 소득 수준 (아파트매매 평균가 proxy). 양의 기여 (구매력 높은 지역 선호)
+#   rent   — 임대 비용 (월세 수준). 음의 기여 (높은 임대료 = 비용 페널티)
+#
+# v4.2 추가 타겟:
+#   children_and_parent — 유소년(5~13) + 부모(35~45) 혼합 가중
+#
+# competition_mode: avoid / tolerate / cluster
+# demographic_target: all / children / elderly / young_adult / children_and_parent
+
+# ─── 프리셋 6종 + pottery ─────────────────────────────────
+
+cafe:
+  weights:
+    population:    0.08
+    floating:      0.18
+    workplace:     0.12
+    competitor:    0.18
+    accessibility: 0.12
+    parking:       0.05
+    diversity:     0.12
+    income:        0.10
+    rent:          0.05
+  competition_mode: cluster
+  competition_threshold: 0.30
+  traffic_type: floating
+  demographic_target: young_adult
+  description: "유동·직장인구 중심, 카페거리 집적 허용, 소득 높은 지역 선호"
+
+restaurant:
+  weights:
+    population:    0.08
+    floating:      0.13
+    workplace:     0.12
+    competitor:    0.18
+    accessibility: 0.12
+    parking:       0.10
+    diversity:     0.12
+    income:        0.10
+    rent:          0.05
+  competition_mode: cluster
+  competition_threshold: 0.25
+  traffic_type: mixed
+  demographic_target: all
+  description: "유동·직장·상주 혼합, 음식점 거리 집적 허용, 소득 반영"
+
+hospital:
+  weights:
+    population:    0.28
+    floating:      0.08
+    workplace:     0.05
+    competitor:    0.23
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.05
+    income:        0.05
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: elderly
+  description: "배후 상주인구(고령 가중), 경쟁 회피, 소득·임대 소폭 반영"
+
+convenience:
+  weights:
+    population:    0.18
+    floating:      0.22
+    workplace:     0.13
+    competitor:    0.23
+    accessibility: 0.13
+    parking:       0.00
+    diversity:     0.00
+    income:        0.03
+    rent:          0.08
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: floating
+  demographic_target: all
+  description: "유동·직장인구 + 독점 상권, 낮은 임대료 선호"
+
+mart:
+  weights:
+    population:    0.27
+    floating:      0.08
+    workplace:     0.05
+    competitor:    0.18
+    accessibility: 0.08
+    parking:       0.13
+    diversity:     0.08
+    income:        0.08
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: all
+  description: "배후 거주인구, 주차 핵심, 소득 반영"
+
+pharmacy:
+  weights:
+    population:    0.23
+    floating:      0.08
+    workplace:     0.05
+    competitor:    0.23
+    accessibility: 0.23
+    parking:       0.05
+    diversity:     0.05
+    income:        0.03
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: elderly
+  description: "상주인구·교통 접근성(고령 가중), 경쟁 회피"
+
+# ─── 도자기 공방 (신규) ────────────────────────────────────
+
+pottery:
+  weights:
+    population:    0.20
+    floating:      0.05
+    workplace:     0.05
+    competitor:    0.10
+    accessibility: 0.15
+    parking:       0.15
+    diversity:     0.05
+    income:        0.15
+    rent:          0.10
+  competition_mode: tolerate
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: children_and_parent
+  description: "도자기 공방: 5~13세 유소년 + 35~45세 부모 타겟, 소득·주차·접근성 중시, 임대료 반영"
+
+# ─── 키워드 분류 타입 ──────────────────────────────────────
+
+fnb_floating:
+  weights:
+    population:    0.08
+    floating:      0.18
+    workplace:     0.12
+    competitor:    0.18
+    accessibility: 0.12
+    parking:       0.05
+    diversity:     0.12
+    income:        0.10
+    rent:          0.05
+  competition_mode: cluster
+  competition_threshold: 0.30
+  traffic_type: floating
+  demographic_target: young_adult
+  description: "유동·직장인구 중심 F&B, 소득 반영"
+
+fnb_cluster:
+  weights:
+    population:    0.08
+    floating:      0.13
+    workplace:     0.12
+    competitor:    0.18
+    accessibility: 0.12
+    parking:       0.10
+    diversity:     0.12
+    income:        0.10
+    rent:          0.05
+  competition_mode: cluster
+  competition_threshold: 0.25
+  traffic_type: mixed
+  demographic_target: all
+  description: "혼합 F&B, 음식점 거리 집적 허용"
+
+destination_residential:
+  weights:
+    population:    0.27
+    floating:      0.08
+    workplace:     0.05
+    competitor:    0.22
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.05
+    income:        0.07
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: all
+  description: "배후 상주인구, 경쟁 회피형 목적지 업종"
+
+destination_hobby:
+  weights:
+    population:    0.08
+    floating:      0.08
+    workplace:     0.08
+    competitor:    0.13
+    accessibility: 0.17
+    parking:       0.13
+    diversity:     0.13
+    income:        0.12
+    rent:          0.08
+  competition_mode: tolerate
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: young_adult
+  description: "교통·주차·다양성·소득 우선 (목적지형 취미 업종)"
+
+education:
+  weights:
+    population:    0.30
+    floating:      0.08
+    workplace:     0.05
+    competitor:    0.18
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.05
+    income:        0.08
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: children
+  description: "배후 주거인구(유소년 가중), 소득 반영"
+
+pet_residential:
+  weights:
+    population:    0.22
+    floating:      0.08
+    workplace:     0.08
+    competitor:    0.18
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.08
+    income:        0.10
+    rent:          0.05
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: destination
+  demographic_target: all
+  description: "주거 밀집 지역 (반려동물 업종), 소득 반영"
+
+fitness:
+  weights:
+    population:    0.12
+    floating:      0.08
+    workplace:     0.12
+    competitor:    0.18
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.12
+    income:        0.10
+    rent:          0.07
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: mixed
+  demographic_target: young_adult
+  description: "상주·직장인구(생산가능인구 가중), 소득 반영"
+
+office_service:
+  weights:
+    population:    0.05
+    floating:      0.17
+    workplace:     0.22
+    competitor:    0.13
+    accessibility: 0.12
+    parking:       0.05
+    diversity:     0.12
+    income:        0.07
+    rent:          0.07
+  competition_mode: avoid
+  competition_threshold: 0.0
+  traffic_type: floating
+  demographic_target: young_adult
+  description: "직장인구 최우선 (사무 서비스), 소득·임대 반영"
+
+beauty_floating:
+  weights:
+    population:    0.08
+    floating:      0.17
+    workplace:     0.12
+    competitor:    0.13
+    accessibility: 0.17
+    parking:       0.05
+    diversity:     0.12
+    income:        0.10
+    rent:          0.06
+  competition_mode: tolerate
+  competition_threshold: 0.20
+  traffic_type: floating
+  demographic_target: young_adult
+  description: "유동·직장인구, 미용 집적 허용, 소득 반영"
+
+accommodation:
+  weights:
+    population:    0.05
+    floating:      0.22
+    workplace:     0.08
+    competitor:    0.13
+    accessibility: 0.22
+    parking:       0.08
+    diversity:     0.08
+    income:        0.07
+    rent:          0.07
+  competition_mode: tolerate
+  competition_threshold: 0.20
+  traffic_type: floating
+  demographic_target: all
+  description: "유동인구 + 접근성 (숙박업종), 소득·임대 반영"
+
+default:
+  weights:
+    population:    0.13
+    floating:      0.13
+    workplace:     0.12
+    competitor:    0.17
+    accessibility: 0.13
+    parking:       0.08
+    diversity:     0.08
+    income:        0.08
+    rent:          0.08
+  competition_mode: tolerate
+  competition_threshold: 0.0
+  traffic_type: mixed
+  demographic_target: all
+  description: "균등 가중치 + 소득·임대 반영 (분류 불가 키워드 폴백)"

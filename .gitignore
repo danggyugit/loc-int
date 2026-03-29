@@ -19,6 +19,10 @@ output/
 
 # Cache
 cache/
+presets/keyword_cache.json
+
+# Temp working dirs
+loc_int_temp/
 
 # Data (원본·가공 데이터 — 용량 큼)
 data/
