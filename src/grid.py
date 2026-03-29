@@ -131,6 +131,60 @@ def _aggregate_diversity(
     return grid_out
 
 
+def _aggregate_zone_score(
+    grid_gdf: gpd.GeoDataFrame,
+    zone_gdf: gpd.GeoDataFrame,
+) -> gpd.GeoDataFrame:
+    """
+    격자별 용도지역 적합도 점수 집계.
+    격자가 여러 용도지역에 걸칠 경우 면적 가중 평균 사용.
+    """
+    grid_tm = grid_gdf.to_crs(CRS_KOREA)
+    zone_tm = zone_gdf.to_crs(CRS_KOREA)
+
+    overlay = gpd.overlay(grid_tm, zone_tm, how="intersection")
+    overlay["_overlap_area"] = overlay.geometry.area
+
+    # 격자별 면적 가중 평균 zone_score
+    weighted = (
+        overlay.groupby("grid_id")
+        .apply(lambda g: (g["zone_score"] * g["_overlap_area"]).sum()
+               / g["_overlap_area"].sum()
+               if g["_overlap_area"].sum() > 0 else 0.5)
+    )
+
+    grid_out = grid_gdf.copy()
+    # Why: 용도지역 데이터 없는 셀은 1.0(필터 안 함)이 아닌 0.5(보수적)
+    grid_out["zone_score"] = grid_out["grid_id"].map(weighted).fillna(0.5)
+
+    n_blocked = (grid_out["zone_score"] == 0.0).sum()
+    log.info(f"용도지역 집계 완료: 평균 {grid_out['zone_score'].mean():.2f} | "
+             f"입점불가 {n_blocked}셀")
+    return grid_out
+
+
+def _aggregate_road_score(
+    grid_gdf: gpd.GeoDataFrame,
+    road_gdf: gpd.GeoDataFrame,
+) -> gpd.GeoDataFrame:
+    """
+    격자별 도로 접근성 점수 집계.
+    격자 내 가장 높은 등급의 도로 점수를 사용.
+    """
+    grid_tm = grid_gdf.to_crs(CRS_KOREA)
+    road_tm = road_gdf.to_crs(CRS_KOREA)
+
+    joined = gpd.sjoin(road_tm, grid_tm[["grid_id", "geometry"]],
+                       how="inner", predicate="intersects")
+    max_road = joined.groupby("grid_id")["road_score"].max()
+
+    grid_out = grid_gdf.copy()
+    grid_out["road_score"] = grid_out["grid_id"].map(max_road).fillna(0.0)
+
+    log.info(f"도로 접근성 집계 완료: 평균 {grid_out['road_score'].mean():.2f}")
+    return grid_out
+
+
 def build_grid_features(
     boundary_gdf: gpd.GeoDataFrame,
     cell_size_m: int = GRID_SIZE_DEFAULT,
@@ -141,6 +195,9 @@ def build_grid_features(
     workplace_gdf:  gpd.GeoDataFrame | None = None,
     parking_gdf:    gpd.GeoDataFrame | None = None,
     diversity_gdf:  gpd.GeoDataFrame | None = None,
+    zone_gdf:       gpd.GeoDataFrame | None = None,
+    building_gdf:   gpd.GeoDataFrame | None = None,
+    road_gdf:       gpd.GeoDataFrame | None = None,
 ) -> gpd.GeoDataFrame:
     """
     격자 생성 후 모든 지표를 한 번에 집계하는 편의 함수.
@@ -148,6 +205,7 @@ def build_grid_features(
     Returns:
         컬럼: grid_id, population, floating, workplace,
               competitor_cnt, transport_score, parking_cnt, diversity,
+              zone_score, commercial_cnt, road_score,
               avg_age, juv_suprt_per, oldage_suprt_per, geometry
     """
     grid = make_grid(boundary_gdf, cell_size_m)
@@ -199,6 +257,22 @@ def build_grid_features(
     else:
         grid["diversity"] = 0
 
+    # ── 신규 팩터 (v4.0+) ────────────────────────────────
+    if zone_gdf is not None and len(zone_gdf) > 0:
+        grid = _aggregate_zone_score(grid, zone_gdf)
+    else:
+        grid["zone_score"] = 1.0  # 데이터 없으면 필터링 안 함
+
+    if building_gdf is not None and len(building_gdf) > 0:
+        grid = aggregate_to_grid(grid, building_gdf, None, "commercial_cnt", agg="count")
+    else:
+        grid["commercial_cnt"] = 0
+
+    if road_gdf is not None and len(road_gdf) > 0:
+        grid = _aggregate_road_score(grid, road_gdf)
+    else:
+        grid["road_score"] = 0.0
+
     log.info(
         f"격자 피처 빌드 완료: {len(grid)}셀 | "
         f"인구합={grid['population'].sum():.0f} | "
@@ -206,6 +280,9 @@ def build_grid_features(
         f"교통점수합={grid['transport_score'].sum():.0f} | "
         f"주차장총={grid['parking_cnt'].sum():.0f} | "
         f"다양성평균={grid['diversity'].mean():.1f} | "
-        f"경쟁업체총={grid['competitor_cnt'].sum():.0f}"
+        f"경쟁업체총={grid['competitor_cnt'].sum():.0f} | "
+        f"상가건물총={grid['commercial_cnt'].sum():.0f} | "
+        f"도로평균={grid['road_score'].mean():.2f} | "
+        f"용도지역평균={grid['zone_score'].mean():.2f}"
     )
     return grid

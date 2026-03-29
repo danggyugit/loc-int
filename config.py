@@ -79,13 +79,21 @@ SGIS_GRID_LEVELS = {
     1000: "3",
 }
 
-# ─── 점수화 기본 가중치 ───────────────────────────────────
+# ─── Vworld API (용도지역 조회) ──────────────────────────
+VWORLD_API_KEY = os.environ.get("VWORLD_API_KEY")
+
+# ─── 건축물대장 API (공공데이터포털) ─────────────────────
+BUILDING_API_KEY = os.environ.get("BUILDING_API_KEY")
+
+# ─── 점수화 기본 가중치 (9팩터) ──────────────────────────
 DEFAULT_WEIGHTS = {
-    "population":    0.15,
-    "floating":      0.15,
-    "workplace":     0.15,
-    "competitor":    0.20,
-    "accessibility": 0.15,
-    "parking":       0.10,
-    "diversity":     0.10,
+    "population":    0.13,
+    "floating":      0.13,
+    "workplace":     0.13,
+    "competitor":    0.17,
+    "accessibility": 0.13,
+    "parking":       0.08,
+    "diversity":     0.08,
+    "commercial":    0.08,
+    "road_quality":  0.07,
 }

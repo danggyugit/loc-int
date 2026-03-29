@@ -560,7 +560,8 @@ def get_competitors_by_keyword(keyword: str, boundary_gdf: gpd.GeoDataFrame) -> 
 # ─────────────────────────────────────────────────────────
 
 def collect_all(region: str, category: str = None, keyword: str = None,
-                cell_size_m: int = 500) -> dict:
+                cell_size_m: int = 500,
+                vworld_key: str = None, building_key: str = None) -> dict:
     """
     지역명 + 업종(또는 키워드)으로 분석에 필요한 모든 데이터를 자동 수집.
 
@@ -569,14 +570,17 @@ def collect_all(region: str, category: str = None, keyword: str = None,
       2. 아파트 밀도 proxy (카카오 API) — 폴백
 
     Args:
-        region:      분석 지역 (예: '강남구', '서울특별시 마포구')
-        category:    프리셋 업종 코드 (예: 'cafe', 'hospital') — preset 방식
-        keyword:     자유 검색어 (예: '도자기 공방', '네일샵') — keyword 방식
-        cell_size_m: 격자 셀 크기 (SGIS 레벨 자동 선택에 사용)
+        region:       분석 지역 (예: '강남구', '서울특별시 마포구')
+        category:     프리셋 업종 코드 (예: 'cafe', 'hospital') — preset 방식
+        keyword:      자유 검색어 (예: '도자기 공방', '네일샵') — keyword 방식
+        cell_size_m:  격자 셀 크기 (SGIS 레벨 자동 선택에 사용)
+        vworld_key:   Vworld API 키 (용도지역 조회)
+        building_key: 건축물대장 API 키 (상가건물 조회)
 
     Returns:
         {boundary, competitor, transport, parking, diversity,
-         population, workplace, pop_source}
+         population, workplace, pop_source,
+         land_use, buildings, roads}
     """
     label = keyword if keyword else category
     log.info(f"=== 데이터 자동 수집 시작: {region} / {label} ===")
@@ -617,6 +621,36 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         if population is not None:
             log.info("인구 데이터: 아파트 proxy 사용 (SGIS 미설정 또는 실패)")
 
+    # ── 신규 데이터 소스 (v4.0+) ──────────────────────────
+    land_use  = None
+    buildings = None
+    roads     = None
+
+    # 용도지역 (Vworld API)
+    if vworld_key:
+        try:
+            from src.vworld_client import get_land_use_zones
+            land_use = get_land_use_zones(boundary, vworld_key)
+        except Exception as e:
+            log.warning(f"용도지역 수집 실패: {e}")
+
+    # 상가건물 (건축물대장 API)
+    if building_key and KAKAO_API_KEY:
+        try:
+            from src.building_client import get_commercial_buildings
+            buildings = get_commercial_buildings(
+                region, boundary, building_key, KAKAO_API_KEY,
+            )
+        except Exception as e:
+            log.warning(f"상가건물 수집 실패: {e}")
+
+    # 도로 네트워크 (OSM)
+    try:
+        from src.building_client import get_road_network
+        roads = get_road_network(boundary)
+    except Exception as e:
+        log.warning(f"도로 네트워크 수집 실패: {e}")
+
     log.info(
         f"=== 수집 완료 === "
         f"경쟁업체 {len(competitor)}건 | "
@@ -625,7 +659,9 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         f"상권 다양성 {len(diversity)}건 | "
         f"인구 {len(population) if population is not None else 0}건 ({pop_source}) | "
         f"종사자 {len(workplace) if workplace is not None else 0}건 | "
-        f"수집 방식: {'키워드' if keyword else '카테고리'}"
+        f"용도지역 {len(land_use) if land_use is not None else 0}건 | "
+        f"상가건물 {len(buildings) if buildings is not None else 0}건 | "
+        f"도로 {len(roads) if roads is not None else 0}건"
     )
     return {
         "boundary":   boundary,
@@ -636,6 +672,9 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         "population": population,
         "workplace":  workplace,
         "pop_source": pop_source,
+        "land_use":   land_use,
+        "buildings":  buildings,
+        "roads":      roads,
     }
 
 

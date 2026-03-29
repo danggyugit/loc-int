@@ -83,10 +83,15 @@ def load_profile(preset: str | None = None, keyword: str | None = None) -> dict:
 
 
 def _validate_weights(weights: dict) -> None:
-    required = {"population", "floating", "workplace", "competitor", "accessibility", "parking", "diversity"}
-    missing = required - set(weights.keys())
+    base_required = {"population", "floating", "workplace", "competitor",
+                     "accessibility", "parking", "diversity"}
+    missing = base_required - set(weights.keys())
     if missing:
         raise ValueError(f"가중치 항목 누락: {missing}")
+    # 신규 팩터 기본값 보완 (하위 호환)
+    for key in ["commercial", "road_quality"]:
+        if key not in weights:
+            weights[key] = 0.0
     total = sum(weights.values())
     if not abs(total - 1.0) < 1e-6:
         raise ValueError(
@@ -194,21 +199,24 @@ def calc_score(
     acc_col:   str = "transport_score",
     park_col:  str = "parking_cnt",
     div_col:   str = "diversity",
+    comm_col:  str = "commercial_cnt",
+    road_col:  str = "road_score",
 ) -> gpd.GeoDataFrame:
     """
-    격자 GeoDataFrame에 종합 점수(score) 컬럼 추가.
+    격자 GeoDataFrame에 종합 점수(score) 컬럼 추가 (9팩터 모델).
 
     수식:
-        demographic_mod = demographic modifier (0.5~1.0)
-        pop_adjusted = pop_norm * demographic_mod
-        competition_effect = _apply_competition_effect(comp_norm, mode, threshold)
-        score = pop_adjusted * w_population
-              + float_norm   * w_floating
-              + work_norm    * w_workplace
-              - comp_effect  * w_competitor
-              + acc_norm     * w_accessibility
-              + park_norm    * w_parking
-              + div_norm     * w_diversity
+        score = pop_adjusted × w_population
+              + float_norm  × w_floating
+              + work_norm   × w_workplace
+              - comp_effect × w_competitor
+              + acc_norm    × w_accessibility
+              + park_norm   × w_parking
+              + div_norm    × w_diversity
+              + comm_norm   × w_commercial
+              + road_norm   × w_road_quality
+
+        # 용도지역 하드 필터: score × zone_score (0이면 입점 불가)
 
     Returns:
         score 컬럼이 추가된 GeoDataFrame (점수 범위 0~1)
@@ -220,7 +228,7 @@ def calc_score(
     comp_thr  = profile["competition_threshold"]
     demo_target = profile.get("demographic_target", "all")
 
-    # 각 지표 Min-Max 정규화
+    # 각 지표 Min-Max 정규화 (9팩터)
     pop_norm   = normalize(out[pop_col])   if pop_col   in out.columns else pd.Series(0.0, index=out.index)
     float_norm = normalize(out[float_col]) if float_col in out.columns else pd.Series(0.0, index=out.index)
     work_norm  = normalize(out[work_col])  if work_col  in out.columns else pd.Series(0.0, index=out.index)
@@ -228,6 +236,8 @@ def calc_score(
     acc_norm   = normalize(out[acc_col])   if acc_col   in out.columns else pd.Series(0.0, index=out.index)
     park_norm  = normalize(out[park_col])  if park_col  in out.columns else pd.Series(0.0, index=out.index)
     div_norm   = normalize(out[div_col])   if div_col   in out.columns else pd.Series(0.0, index=out.index)
+    comm_norm  = normalize(out[comm_col])  if comm_col  in out.columns else pd.Series(0.0, index=out.index)
+    road_norm  = normalize(out[road_col])  if road_col  in out.columns else pd.Series(0.0, index=out.index)
 
     # 인구통계 타겟 보정 (인구 점수에 곱하기)
     demo_mod = _calc_demographic_modifier(out, demo_target)
@@ -244,11 +254,19 @@ def calc_score(
         + acc_norm    * weights["accessibility"]
         + park_norm   * weights["parking"]
         + div_norm    * weights["diversity"]
+        + comm_norm   * weights.get("commercial", 0)
+        + road_norm   * weights.get("road_quality", 0)
     )
 
     # 음수 방지 후 0~1 재정규화
     out["score"] = out["score"].clip(lower=0)
     out["score"] = normalize(out["score"])
+
+    # Why: 용도지역 하드 필터 — zone_score=0인 셀(전용주거·녹지 등)은
+    #      다른 팩터가 좋아도 입점 불가이므로 점수를 0으로 만듦
+    if "zone_score" in out.columns:
+        out["score"] = out["score"] * out["zone_score"]
+        out["score"] = normalize(out["score"])
 
     demo_label = f"|demo={demo_target}" if demo_target != "all" else ""
     log.info(
@@ -301,7 +319,8 @@ def score_and_rank(
         weights = json.loads(weights_json)
         _validate_weights(weights)
         # 누락 키 보완 (하위 호환)
-        for _compat_key in ["workplace", "parking", "diversity"]:
+        for _compat_key in ["workplace", "parking", "diversity",
+                            "commercial", "road_quality"]:
             if _compat_key not in weights:
                 weights[_compat_key] = 0.0
         profile = {
