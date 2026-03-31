@@ -32,6 +32,66 @@ plt.rcParams["axes.unicode_minus"] = False
 import folium
 from streamlit_folium import st_folium
 
+
+# ─────────────────────────────────────────────────────────
+# 캐싱 함수 — 같은 파라미터면 API 재호출 없이 즉시 반환
+# Why: 클라우드 환경에서 위젯 상호작용 시 전체 스크립트가 재실행되므로
+#      데이터 수집(2~3분)을 매번 반복하면 타임아웃 발생
+# ─────────────────────────────────────────────────────────
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _cached_collect_all(
+    region: str, category: str, keyword: str,
+    cell_size_m: int, vworld_key: str, building_key: str,
+    _kakao_key: str,
+) -> dict:
+    """collect_all 결과를 캐싱. GeoDataFrame은 dict로 변환하여 직렬화."""
+    from src.collector import collect_all
+    data = collect_all(
+        region=region, category=category, keyword=keyword,
+        cell_size_m=cell_size_m,
+        vworld_key=vworld_key, building_key=building_key,
+    )
+    # GeoDataFrame → dict 변환 (st.cache_data 직렬화 호환)
+    import geopandas as gpd
+    result = {}
+    for k, v in data.items():
+        if isinstance(v, gpd.GeoDataFrame):
+            result[k] = v.to_json() if len(v) > 0 else None
+        else:
+            result[k] = v
+    return result
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _cached_income_rent(region: str, _data_go_key: str, boundary_json: str):
+    """소득·월세 데이터 수집 캐싱."""
+    import geopandas as gpd
+    from io import StringIO
+    boundary = gpd.read_file(StringIO(boundary_json))
+
+    from src.rent_income_client import (
+        is_data_api_available, get_income_data, get_rent_data,
+    )
+    income_gdf = None
+    rent_gdf = None
+    if is_data_api_available():
+        income_gdf = get_income_data(boundary, region=region)
+        rent_gdf = get_rent_data(boundary, region=region)
+    return (
+        income_gdf.to_json() if income_gdf is not None and len(income_gdf) > 0 else None,
+        rent_gdf.to_json() if rent_gdf is not None and len(rent_gdf) > 0 else None,
+    )
+
+
+def _json_to_gdf(geojson_str):
+    """캐시에서 복원한 GeoJSON 문자열 → GeoDataFrame."""
+    if geojson_str is None:
+        return None
+    import geopandas as gpd
+    from io import StringIO
+    return gpd.read_file(StringIO(geojson_str))
+
 # ─────────────────────────────────────────────────────────
 # 페이지 설정
 # ─────────────────────────────────────────────────────────
@@ -209,36 +269,40 @@ if run_btn:
     progress = st.progress(0, text="데이터 수집 중...")
 
     try:
-        # Step 1. 기본 데이터 수집 (기존 7팩터 + 용도지역·건축물·도로)
-        from src.collector import collect_all
-        data       = collect_all(region=region, category=preset, keyword=keyword,
-                                 cell_size_m=cell_size,
-                                 vworld_key=vworld_key, building_key=building_key)
-        boundary   = data["boundary"]
-        competitor = data["competitor"]
-        transport  = data["transport"]
-        population = data["population"]
-        workplace  = data.get("workplace")
-        parking    = data.get("parking")
-        diversity  = data.get("diversity")
-        land_use   = data.get("land_use")
-        buildings  = data.get("buildings")
-        roads      = data.get("roads")
-        pop_source = data.get("pop_source", "unknown")
+        # Step 1. 기본 데이터 수집 — 캐싱 적용 (같은 파라미터면 즉시 반환)
+        cached = _cached_collect_all(
+            region=region, category=preset, keyword=keyword,
+            cell_size_m=cell_size,
+            vworld_key=vworld_key, building_key=building_key,
+            _kakao_key=kakao_key,
+        )
+        boundary   = _json_to_gdf(cached["boundary"])
+        competitor = _json_to_gdf(cached["competitor"])
+        transport  = _json_to_gdf(cached["transport"])
+        population = _json_to_gdf(cached["population"])
+        workplace  = _json_to_gdf(cached.get("workplace"))
+        parking    = _json_to_gdf(cached.get("parking"))
+        diversity  = _json_to_gdf(cached.get("diversity"))
+        land_use   = _json_to_gdf(cached.get("land_use"))
+        buildings  = _json_to_gdf(cached.get("buildings"))
+        roads      = _json_to_gdf(cached.get("roads"))
+        pop_source = cached.get("pop_source", "unknown")
         progress.progress(20, text="소득·월세 데이터 수집 중...")
 
-        # Step 2. 소득·월세 데이터 수집 (v4.2 계승)
-        from src.rent_income_client import (
-            is_data_api_available, get_income_data, get_rent_data,
-            assign_nearest_to_grid,
-        )
+        # Step 2. 소득·월세 데이터 수집 — 캐싱 적용
+        from src.rent_income_client import assign_nearest_to_grid
         income_gdf = None
         rent_gdf   = None
         income_source = "none"
 
-        if is_data_api_available():
-            income_gdf = get_income_data(boundary, region=region)
-            rent_gdf   = get_rent_data(boundary, region=region)
+        if data_go_kr_key:
+            boundary_json = cached["boundary"]
+            income_json, rent_json = _cached_income_rent(
+                region=region, _data_go_key=data_go_kr_key,
+                boundary_json=boundary_json,
+            )
+            income_gdf = _json_to_gdf(income_json)
+            rent_gdf   = _json_to_gdf(rent_json)
             if income_gdf is not None or rent_gdf is not None:
                 income_source = "data.go.kr"
             if income_gdf is not None:

@@ -53,6 +53,7 @@ ZONE_COMMERCIAL_SCORE = {
 # OSM landuse → 한국 용도지역 근사 매핑
 # Why: Vworld 2D데이터 API 키가 별도 등록이 필요하여 실패할 경우,
 #      OSM 데이터로 대략적인 용도지역 판단을 제공
+# landuse 태그 매핑
 _OSM_LANDUSE_MAP = {
     "commercial":   ("일반상업지역",   1.0),
     "retail":       ("근린상업지역",   1.0),
@@ -69,6 +70,29 @@ _OSM_LANDUSE_MAP = {
     "railway":      ("준공업지역",     0.8),
     "religious":    ("제2종일반주거지역", 0.4),
     "education":    ("제2종일반주거지역", 0.4),
+}
+
+# Why: 공원·호수 등은 landuse가 아닌 leisure/natural 태그를 사용하므로
+#      별도 매핑 필요. 이 영역은 상업 입점이 불가하므로 zone_score=0.0
+_OSM_LEISURE_MAP = {
+    "park":           ("공원",       0.0),
+    "garden":         ("정원",       0.0),
+    "playground":     ("놀이터",     0.0),
+    "pitch":          ("운동장",     0.0),
+    "track":          ("운동장",     0.0),
+    "sports_centre":  ("체육시설",   0.0),
+    "golf_course":    ("골프장",     0.0),
+    "dog_park":       ("공원",       0.0),
+    "nature_reserve": ("자연보전",   0.0),
+}
+
+_OSM_NATURAL_MAP = {
+    "water":     ("수역",       0.0),
+    "wood":      ("산림",       0.0),
+    "wetland":   ("습지",       0.0),
+    "sand":      ("사지",       0.0),
+    "bare_rock": ("암석지",     0.0),
+    "grassland": ("초지",       0.0),
 }
 
 
@@ -234,7 +258,9 @@ def _get_osm_landuse(
     query = f"""
     [out:json][timeout:25];
     (way["landuse"]({bbox});
-     relation["landuse"]({bbox}););
+     relation["landuse"]({bbox});
+     way["leisure"~"park|garden|playground|pitch|track|sports_centre|golf_course|dog_park|nature_reserve"]({bbox});
+     way["natural"~"water|wood|wetland|sand|bare_rock|grassland"]({bbox}););
     out body;>;out skel qt;
     """
 
@@ -277,12 +303,22 @@ def _get_osm_landuse(
         if el["type"] == "node":
             nodes[el["id"]] = (el["lon"], el["lat"])
 
-    # Way → Polygon 변환
+    # Way → Polygon 변환 (landuse + leisure + natural)
     records = []
     for el in elements:
         if el["type"] != "way" or "tags" not in el:
             continue
-        osm_type = el["tags"].get("landuse", "")
+
+        tags = el["tags"]
+        # landuse → leisure → natural 순으로 태그 확인
+        osm_type = tags.get("landuse", "")
+        tag_source = "landuse"
+        if not osm_type:
+            osm_type = tags.get("leisure", "")
+            tag_source = "leisure"
+        if not osm_type:
+            osm_type = tags.get("natural", "")
+            tag_source = "natural"
         if not osm_type:
             continue
 
@@ -298,7 +334,14 @@ def _get_osm_landuse(
         except Exception:
             continue
 
-        mapped = _OSM_LANDUSE_MAP.get(osm_type)
+        # 태그 종류에 따라 적절한 매핑 테이블 선택
+        if tag_source == "landuse":
+            mapped = _OSM_LANDUSE_MAP.get(osm_type)
+        elif tag_source == "leisure":
+            mapped = _OSM_LEISURE_MAP.get(osm_type)
+        else:
+            mapped = _OSM_NATURAL_MAP.get(osm_type)
+
         if mapped is None:
             zone_name = f"기타({osm_type})"
             zone_score = 0.5
@@ -345,32 +388,52 @@ def _get_osm_landuse_via_osmnx(
     boundary_wgs = boundary_gdf.to_crs(CRS_WGS84)
     bounds = boundary_wgs.total_bounds  # minx, miny, maxx, maxy
 
-    log.info("osmnx로 OSM landuse 조회 시도 (캐시 활용)")
+    log.info("osmnx로 OSM landuse+leisure+natural 조회 시도 (캐시 활용)")
 
-    try:
-        # bbox = (left, bottom, right, top) = (minx, miny, maxx, maxy)
-        gdf_raw = ox.features_from_bbox(
-            bbox=(bounds[0], bounds[1], bounds[2], bounds[3]),
-            tags={"landuse": True},
-        )
-    except Exception as e:
-        log.warning(f"osmnx landuse 조회 실패: {e}")
+    bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
+    all_gdfs = []
+    for tags in [
+        {"landuse": True},
+        {"leisure": ["park", "garden", "playground", "pitch", "track",
+                     "sports_centre", "golf_course", "dog_park", "nature_reserve"]},
+        {"natural": ["water", "wood", "wetland", "sand", "bare_rock", "grassland"]},
+    ]:
+        try:
+            gdf_part = ox.features_from_bbox(bbox=bbox, tags=tags)
+            if not gdf_part.empty:
+                all_gdfs.append(gdf_part)
+        except Exception as e:
+            log.warning(f"osmnx {list(tags.keys())[0]} 조회 실패: {e}")
+
+    if not all_gdfs:
+        log.warning("osmnx 데이터 없음")
         return None
 
-    if gdf_raw.empty:
-        log.warning("osmnx landuse 데이터 없음")
-        return None
+    import pandas as pd
+    gdf_raw = pd.concat(all_gdfs, ignore_index=True)
 
     records = []
     for _, row in gdf_raw.iterrows():
-        osm_type = row.get("landuse", "")
-        if not osm_type or row.geometry is None:
+        if row.geometry is None:
             continue
-        # Polygon/MultiPolygon만 사용
         if row.geometry.geom_type not in ("Polygon", "MultiPolygon"):
             continue
 
-        mapped = _OSM_LANDUSE_MAP.get(osm_type)
+        # landuse → leisure → natural 순으로 태그 확인
+        osm_type = row.get("landuse", "")
+        if osm_type and not (isinstance(osm_type, float)):
+            mapped = _OSM_LANDUSE_MAP.get(osm_type)
+        else:
+            osm_type = row.get("leisure", "")
+            if osm_type and not (isinstance(osm_type, float)):
+                mapped = _OSM_LEISURE_MAP.get(osm_type)
+            else:
+                osm_type = row.get("natural", "")
+                if osm_type and not (isinstance(osm_type, float)):
+                    mapped = _OSM_NATURAL_MAP.get(osm_type)
+                else:
+                    continue
+
         if mapped is None:
             zone_name = f"기타({osm_type})"
             zone_score = 0.5

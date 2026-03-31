@@ -297,21 +297,26 @@ def get_commercial_buildings(
 
     log.info(f"상업용 건축물 필터: {len(commercial)}건")
 
-    # 4) 지오코딩 (주소 → 좌표) — 중복 주소 제거 후 변환
+    # 4) 지오코딩 (주소 → 좌표) — 병렬 처리
     unique_addrs = list({b["address"] for b in commercial})
     addr_coords = {}
     geocode_fail = 0
 
-    for i, addr in enumerate(unique_addrs):
-        coords = _geocode_address(addr, kakao_key)
-        if coords:
-            addr_coords[addr] = coords
-        else:
-            geocode_fail += 1
-
-        if (i + 1) % 50 == 0:
-            log.info(f"  지오코딩 진행: {i+1}/{len(unique_addrs)}")
-        time.sleep(0.03)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_geocode_address, addr, kakao_key): addr
+            for addr in unique_addrs
+        }
+        for i, future in enumerate(as_completed(futures)):
+            addr = futures[future]
+            coords = future.result()
+            if coords:
+                addr_coords[addr] = coords
+            else:
+                geocode_fail += 1
+            if (i + 1) % 50 == 0:
+                log.info(f"  지오코딩 진행: {i+1}/{len(unique_addrs)}")
 
     records = []
     for bld in commercial:
