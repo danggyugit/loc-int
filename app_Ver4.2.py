@@ -73,16 +73,23 @@ with st.sidebar:
     st.title("📍 입지 선정 분석")
     st.markdown("---")
 
+    def _get_secret(key: str, default: str = "") -> str:
+        """Streamlit Secrets → 환경변수 → 기본값 순으로 조회."""
+        try:
+            return st.secrets[key]
+        except (KeyError, FileNotFoundError):
+            return os.environ.get(key, default)
+
     kakao_key = st.text_input(
         "카카오 REST API 키",
-        value=os.environ.get("KAKAO_API_KEY", ""),
+        value=_get_secret("KAKAO_API_KEY"),
         type="password",
         help="카카오 개발자 콘솔에서 발급한 REST API 키",
     )
 
     data_go_kr_key = st.text_input(
         "공공데이터포털 API 키",
-        value=os.environ.get("DATA_GO_KR_API_KEY", ""),
+        value=_get_secret("DATA_GO_KR_API_KEY"),
         type="password",
         help="data.go.kr에서 발급한 인증키 (소득·월세 수집용, 선택)",
     )
