@@ -74,16 +74,23 @@ with st.sidebar:
     st.title("📍 입지 선정 분석")
     st.markdown("---")
 
+    def _get_secret(key: str, default: str = "") -> str:
+        """Streamlit Secrets → 환경변수 → 기본값 순으로 조회."""
+        try:
+            return st.secrets[key]
+        except (KeyError, FileNotFoundError):
+            return os.environ.get(key, default)
+
     kakao_key = st.text_input(
         "카카오 REST API 키",
-        value=os.environ.get("KAKAO_API_KEY", ""),
+        value=_get_secret("KAKAO_API_KEY"),
         type="password",
         help="카카오 개발자 콘솔에서 발급한 REST API 키",
     )
 
     data_go_kr_key = st.text_input(
         "공공데이터포털 API 키",
-        value=os.environ.get("DATA_GO_KR_API_KEY", ""),
+        value=_get_secret("DATA_GO_KR_API_KEY"),
         type="password",
         help="data.go.kr에서 발급한 인증키 (소득·월세 수집용, 선택)",
     )
@@ -91,25 +98,25 @@ with st.sidebar:
     with st.expander("추가 API 키 (용도지역·건축물·인구)", expanded=False):
         vworld_key = st.text_input(
             "Vworld API 키",
-            value=os.environ.get("VWORLD_API_KEY", ""),
+            value=_get_secret("VWORLD_API_KEY"),
             type="password",
             help="용도지역 필터링 (vworld.kr에서 발급, 선택). 미입력 시 OSM 데이터로 대체.",
         )
         building_key = st.text_input(
             "건축물대장 API 키",
-            value=os.environ.get("BUILDING_API_KEY", ""),
+            value=_get_secret("BUILDING_API_KEY"),
             type="password",
             help="상가건물 분석 (data.go.kr 건축HUB, 선택)",
         )
         sgis_key = st.text_input(
             "SGIS 서비스ID (Consumer Key)",
-            value=os.environ.get("SGIS_CONSUMER_KEY", ""),
+            value=_get_secret("SGIS_CONSUMER_KEY"),
             type="password",
             help="통계청 SGIS 실인구 데이터 (sgis.kostat.go.kr에서 발급, 선택)",
         )
         sgis_secret = st.text_input(
             "SGIS 보안KEY (Consumer Secret)",
-            value=os.environ.get("SGIS_CONSUMER_SECRET", ""),
+            value=_get_secret("SGIS_CONSUMER_SECRET"),
             type="password",
             help="통계청 SGIS API 보안키",
         )
