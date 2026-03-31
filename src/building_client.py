@@ -1,9 +1,15 @@
 # src/building_client.py — 건축물대장 API + 도로 접근성 분석
 # 상가건물 밀도 (건축물대장 API) + 도로 등급 (OSM) → 소프트 팩터 2개
+#
+# 건축물대장 API 주의사항:
+#   - getBrTitleInfo는 sigunguCd + bjdongCd를 모두 필수로 요구
+#   - sigunguCd만 전송 시 빈 body({}) 반환 (에러가 아닌 빈 결과)
+#   - bjdongCd는 법정동코드 하위 5자리 (b_code[5:])
 
 import logging
 import time
 import requests
+import numpy as np
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
@@ -43,38 +49,110 @@ ROAD_SCORE_MAP = {
 # 1. 건축물대장 — 상가건물 위치 수집
 # ──────────────────────────────────────────────────────────
 
-def _get_sigungu_code(region: str, kakao_key: str) -> str | None:
-    """카카오 API로 지역명 → 시군구코드(5자리) 조회."""
-    headers = {"Authorization": f"KakaoAK {kakao_key}"}
+def _get_bjdong_codes(region: str, boundary_gdf: gpd.GeoDataFrame,
+                      kakao_key: str) -> list[dict]:
+    """
+    분석 영역 내 법정동 코드 목록 조회.
 
-    # 1) 지역 중심 좌표 얻기 (구청/시청 검색)
-    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
-    for query in [f"{region}청", region]:
+    1차: 경계 내 격자 포인트에서 coord2regioncode로 법정동 수집
+    2차: 지역명 주소 검색으로 보완
+
+    Returns:
+        [{"sigungu_cd": "41285", "bjdong_cd": "10500", "name": "마두동"}, ...]
+    """
+    headers = {"Authorization": f"KakaoAK {kakao_key}"}
+    seen_codes = set()
+    result = []
+
+    # 경계 내 격자 포인트 생성 → coord2regioncode로 법정동 수집
+    boundary_tm = boundary_gdf.to_crs(CRS_KOREA)
+    unified = boundary_tm.unary_union
+    minx, miny, maxx, maxy = unified.bounds
+
+    # 2km 간격으로 샘플 포인트 생성 (법정동 경계를 충분히 커버)
+    step = 2000
+    xs = np.arange(minx + step / 2, maxx, step)
+    ys = np.arange(miny + step / 2, maxy, step)
+
+    points_tm = gpd.GeoDataFrame(
+        geometry=[Point(x, y) for x in xs for y in ys],
+        crs=CRS_KOREA,
+    )
+    # 경계 내 포인트만
+    points_tm = points_tm[points_tm.geometry.within(unified)].copy()
+    points_wgs = points_tm.to_crs(CRS_WGS84)
+
+    log.info(f"법정동 코드 수집: {len(points_wgs)}개 격자 포인트 사용")
+
+    for pt in points_wgs.geometry:
         try:
-            resp = requests.get(url, headers=headers,
-                                params={"query": query}, timeout=10)
+            resp = requests.get(
+                "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json",
+                headers=headers,
+                params={"x": pt.x, "y": pt.y},
+                timeout=5,
+            )
             resp.raise_for_status()
             docs = resp.json().get("documents", [])
-            if docs:
-                lng, lat = docs[0]["x"], docs[0]["y"]
-                break
-        except Exception:
+            for doc in docs:
+                if doc.get("region_type") == "B":  # 법정동
+                    code = doc.get("code", "")
+                    if len(code) >= 10:
+                        sigungu_cd = code[:5]
+                        bjdong_cd = code[5:10]
+                        key = f"{sigungu_cd}_{bjdong_cd}"
+                        if key not in seen_codes:
+                            seen_codes.add(key)
+                            name = doc.get("region_3depth_name", "")
+                            result.append({
+                                "sigungu_cd": sigungu_cd,
+                                "bjdong_cd": bjdong_cd,
+                                "name": name,
+                            })
+            time.sleep(0.03)
+        except Exception as e:
+            log.debug(f"coord2regioncode 오류: {e}")
             continue
-    else:
-        return None
 
-    # 2) 좌표 → 법정동코드 → 시군구코드
-    url2 = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json"
-    try:
-        resp2 = requests.get(url2, headers=headers,
-                             params={"x": lng, "y": lat}, timeout=10)
-        resp2.raise_for_status()
-        for doc in resp2.json().get("documents", []):
-            if doc.get("region_type") == "B":
-                return doc["code"][:5]
-    except Exception as e:
-        log.warning(f"시군구코드 조회 실패: {e}")
-    return None
+    if not result:
+        # 폴백: 주소 검색으로 시군구 코드만이라도 확보
+        log.warning("격자 기반 법정동 수집 실패 → 주소 검색 폴백")
+        for query in [region, f"{region} 청사", f"고양시 {region}"]:
+            try:
+                resp = requests.get(
+                    "https://dapi.kakao.com/v2/local/search/address.json",
+                    headers=headers,
+                    params={"query": query},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                docs = resp.json().get("documents", [])
+                for doc in docs:
+                    addr = doc.get("address")
+                    if addr and addr.get("b_code"):
+                        code = addr["b_code"]
+                        if len(code) >= 10:
+                            sigungu_cd = code[:5]
+                            bjdong_cd = code[5:10]
+                            key = f"{sigungu_cd}_{bjdong_cd}"
+                            if key not in seen_codes:
+                                seen_codes.add(key)
+                                name = addr.get("region_3depth_name", "")
+                                result.append({
+                                    "sigungu_cd": sigungu_cd,
+                                    "bjdong_cd": bjdong_cd,
+                                    "name": name,
+                                })
+            except Exception:
+                continue
+
+    log.info(f"법정동 코드 수집 완료: {len(result)}개 동")
+    for r in result[:5]:
+        log.info(f"  {r['sigungu_cd']}-{r['bjdong_cd']} ({r['name']})")
+    if len(result) > 5:
+        log.info(f"  ... 외 {len(result) - 5}개")
+
+    return result
 
 
 def _geocode_address(address: str, kakao_key: str) -> tuple | None:
@@ -103,8 +181,8 @@ def get_commercial_buildings(
     """
     건축물대장 API로 상가건물 위치 수집.
 
-    1. 시군구코드 조회 (카카오 API)
-    2. 건축물대장 표제부 조회 (건축HUB API)
+    1. 법정동 코드 목록 조회 (카카오 coord2regioncode)
+    2. 법정동별 건축물대장 표제부 조회 (건축HUB API)
     3. 상업용 건축물 필터링
     4. 주소 → 좌표 변환 (카카오 지오코딩)
 
@@ -118,62 +196,77 @@ def get_commercial_buildings(
         log.warning("카카오 API 키 없음 → 건축물 지오코딩 불가")
         return None
 
-    # 1) 시군구코드 조회
-    sigungu_cd = _get_sigungu_code(region, kakao_key)
-    if not sigungu_cd:
-        log.warning(f"시군구코드 조회 실패: {region}")
+    # 1) 법정동 코드 목록 조회
+    bjdong_list = _get_bjdong_codes(region, boundary_gdf, kakao_key)
+    if not bjdong_list:
+        log.warning(f"법정동 코드 조회 실패: {region}")
         return None
-    log.info(f"시군구코드: {sigungu_cd} ({region})")
 
-    # 2) 건축물대장 표제부 조회
+    # 2) 법정동별 건축물대장 표제부 조회
     url = "http://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
     all_items = []
-    page = 1
-    num_rows = 100
-    # Why: 필터링 전이므로 상업용 비율 감안해 3배수 조회
-    fetch_limit = max_buildings * 3
+    # Why: 법정동별로 조회하므로 동당 조회량 제한
+    per_dong_limit = max(50, max_buildings * 3 // len(bjdong_list))
 
-    log.info(f"건축물대장 조회 시작: 시군구={sigungu_cd}")
+    log.info(f"건축물대장 조회 시작: {len(bjdong_list)}개 법정동")
 
-    while len(all_items) < fetch_limit:
-        params = {
-            "serviceKey": building_api_key,
-            "sigunguCd": sigungu_cd,
-            "numOfRows": num_rows,
-            "pageNo": page,
-            "_type": "json",
-        }
-        try:
-            resp = requests.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            log.warning(f"건축물대장 API 오류 (page {page}): {e}")
+    for dong_info in bjdong_list:
+        sigungu_cd = dong_info["sigungu_cd"]
+        bjdong_cd = dong_info["bjdong_cd"]
+        dong_name = dong_info["name"]
+        dong_items = []
+        page = 1
+        num_rows = 100
+
+        while len(dong_items) < per_dong_limit:
+            params = {
+                "serviceKey": building_api_key,
+                "sigunguCd": sigungu_cd,
+                "bjdongCd": bjdong_cd,
+                "numOfRows": num_rows,
+                "pageNo": page,
+                "_type": "json",
+            }
+            try:
+                resp = requests.get(url, params=params, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                log.warning(f"건축물대장 API 오류 ({dong_name}, page {page}): {e}")
+                break
+
+            # Why: bjdongCd 포함 시 response wrapper 구조가 다름
+            body = data.get("response", {}).get("body", {})
+            if not body:
+                # bjdongCd 없는 경우의 구조 시도
+                body = data.get("body", {})
+            items = body.get("items", {})
+
+            if isinstance(items, dict):
+                item_list = items.get("item", [])
+            elif isinstance(items, list):
+                item_list = items
+            else:
+                item_list = []
+
+            if isinstance(item_list, dict):
+                item_list = [item_list]
+
+            if not item_list:
+                break
+
+            dong_items.extend(item_list)
+
+            total = int(body.get("totalCount", 0))
+            if page * num_rows >= total or page * num_rows >= per_dong_limit:
+                break
+            page += 1
+            time.sleep(0.1)
+
+        all_items.extend(dong_items)
+
+        if len(all_items) >= max_buildings * 3:
             break
-
-        body = data.get("response", {}).get("body", {})
-        items = body.get("items", {})
-
-        if isinstance(items, dict):
-            item_list = items.get("item", [])
-        elif isinstance(items, list):
-            item_list = items
-        else:
-            item_list = []
-
-        if isinstance(item_list, dict):
-            item_list = [item_list]
-
-        if not item_list:
-            break
-
-        all_items.extend(item_list)
-
-        total = int(body.get("totalCount", 0))
-        if page * num_rows >= total or page * num_rows >= fetch_limit:
-            break
-        page += 1
-        time.sleep(0.1)
 
     if not all_items:
         log.warning("건축물대장 데이터 없음")

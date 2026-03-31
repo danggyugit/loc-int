@@ -1,6 +1,7 @@
 # src/collector.py — 자동 데이터 수집 (DA Agent)
 # 지역명 + 업종만으로 분석에 필요한 모든 데이터를 자동 수집
 
+import os
 import time
 import logging
 import requests
@@ -626,20 +627,22 @@ def collect_all(region: str, category: str = None, keyword: str = None,
     buildings = None
     roads     = None
 
-    # 용도지역 (Vworld API)
-    if vworld_key:
-        try:
-            from src.vworld_client import get_land_use_zones
-            land_use = get_land_use_zones(boundary, vworld_key)
-        except Exception as e:
-            log.warning(f"용도지역 수집 실패: {e}")
+    # 용도지역 (Vworld API → OSM 폴백)
+    # Why: vworld_key 없어도 OSM landuse 폴백이 동작하므로 항상 시도
+    try:
+        from src.vworld_client import get_land_use_zones
+        land_use = get_land_use_zones(boundary, vworld_key or "")
+    except Exception as e:
+        log.warning(f"용도지역 수집 실패: {e}")
 
     # 상가건물 (건축물대장 API)
-    if building_key and KAKAO_API_KEY:
+    # Why: KAKAO_API_KEY는 모듈 레벨 캐시로 None일 수 있으므로 런타임 조회
+    kakao_key_runtime = os.environ.get("KAKAO_API_KEY", "")
+    if building_key and kakao_key_runtime:
         try:
             from src.building_client import get_commercial_buildings
             buildings = get_commercial_buildings(
-                region, boundary, building_key, KAKAO_API_KEY,
+                region, boundary, building_key, kakao_key_runtime,
             )
         except Exception as e:
             log.warning(f"상가건물 수집 실패: {e}")

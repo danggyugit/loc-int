@@ -29,7 +29,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (
     CRS_WGS84, CRS_KOREA,
-    SGIS_CONSUMER_KEY, SGIS_CONSUMER_SECRET,
     SGIS_BASE_URL,
 )
 
@@ -46,12 +45,24 @@ _SAMPLE_STEP = 200
 # 인증
 # ─────────────────────────────────────────────────────────
 
+def _get_sgis_keys() -> tuple[str, str]:
+    """SGIS API 키를 런타임에 환경변수에서 읽음.
+    Why: Streamlit 앱에서 sidebar 입력으로 환경변수를 동적 설정하므로
+         모듈 로드 시점이 아닌 호출 시점에 읽어야 함."""
+    import os
+    return (
+        os.environ.get("SGIS_CONSUMER_KEY", ""),
+        os.environ.get("SGIS_CONSUMER_SECRET", ""),
+    )
+
+
 def _get_access_token() -> str:
     """SGIS API 인증 토큰 발급."""
+    consumer_key, consumer_secret = _get_sgis_keys()
     resp = requests.get(
         f"{SGIS_BASE_URL}/auth/authentication.json",
-        params={"consumer_key": SGIS_CONSUMER_KEY,
-                "consumer_secret": SGIS_CONSUMER_SECRET},
+        params={"consumer_key": consumer_key,
+                "consumer_secret": consumer_secret},
         timeout=15, verify=False,
     )
     resp.raise_for_status()
@@ -337,7 +348,8 @@ def get_sgis_grid_data(
         {"population": GeoDataFrame, "workplace": GeoDataFrame}
         또는 실패 시 None
     """
-    if not SGIS_CONSUMER_KEY or not SGIS_CONSUMER_SECRET:
+    consumer_key, consumer_secret = _get_sgis_keys()
+    if not consumer_key or not consumer_secret:
         log.info("SGIS API 키 미설정 → SGIS 수집 건너뜀")
         return None
 
@@ -384,5 +396,6 @@ def get_sgis_grid_data(
 
 
 def is_sgis_available() -> bool:
-    """SGIS API 키가 설정되어 있는지 확인."""
-    return bool(SGIS_CONSUMER_KEY and SGIS_CONSUMER_SECRET)
+    """SGIS API 키가 설정되어 있는지 확인 (런타임 체크)."""
+    consumer_key, consumer_secret = _get_sgis_keys()
+    return bool(consumer_key and consumer_secret)

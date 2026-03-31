@@ -88,18 +88,30 @@ with st.sidebar:
         help="data.go.kr에서 발급한 인증키 (소득·월세 수집용, 선택)",
     )
 
-    with st.expander("추가 API 키 (용도지역·건축물)", expanded=False):
+    with st.expander("추가 API 키 (용도지역·건축물·인구)", expanded=False):
         vworld_key = st.text_input(
             "Vworld API 키",
             value=os.environ.get("VWORLD_API_KEY", ""),
             type="password",
-            help="용도지역 필터링 (vworld.kr에서 발급, 선택)",
+            help="용도지역 필터링 (vworld.kr에서 발급, 선택). 미입력 시 OSM 데이터로 대체.",
         )
         building_key = st.text_input(
             "건축물대장 API 키",
             value=os.environ.get("BUILDING_API_KEY", ""),
             type="password",
             help="상가건물 분석 (data.go.kr 건축HUB, 선택)",
+        )
+        sgis_key = st.text_input(
+            "SGIS 서비스ID (Consumer Key)",
+            value=os.environ.get("SGIS_CONSUMER_KEY", ""),
+            type="password",
+            help="통계청 SGIS 실인구 데이터 (sgis.kostat.go.kr에서 발급, 선택)",
+        )
+        sgis_secret = st.text_input(
+            "SGIS 보안KEY (Consumer Secret)",
+            value=os.environ.get("SGIS_CONSUMER_SECRET", ""),
+            type="password",
+            help="통계청 SGIS API 보안키",
         )
 
     st.markdown("---")
@@ -181,6 +193,10 @@ if run_btn:
     os.environ["KAKAO_API_KEY"] = kakao_key
     if data_go_kr_key:
         os.environ["DATA_GO_KR_API_KEY"] = data_go_kr_key
+    if sgis_key:
+        os.environ["SGIS_CONSUMER_KEY"] = sgis_key
+    if sgis_secret:
+        os.environ["SGIS_CONSUMER_SECRET"] = sgis_secret
 
     st.markdown(f"### 📊 `{region}` / `{label}` 분석 중...")
     progress = st.progress(0, text="데이터 수집 중...")
@@ -231,8 +247,9 @@ if run_btn:
 
         # v4.3: 용도지역·건축물·도로 수집 결과 안내
         if land_use is not None and len(land_use) > 0:
-            st.success(f"용도지역 데이터 수집 완료: {len(land_use)}개 폴리곤")
-        elif vworld_key:
+            source_label = "Vworld" if vworld_key else "OSM"
+            st.success(f"용도지역 데이터 수집 완료: {len(land_use)}개 폴리곤 ({source_label})")
+        else:
             st.warning("용도지역 데이터 수집 실패 — 하드 필터 없이 진행합니다.")
 
         if buildings is not None and len(buildings) > 0:
