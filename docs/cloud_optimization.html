@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v4.3 클라우드 환경 최적화</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── 헤더 ── */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .header .badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+  }
+  .header h1 {
+    font-size: 32px;
+    font-weight: 900;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .header p {
+    font-size: 15px;
+    color: #8b8fa3;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  /* ── 문제/해결 비교 ── */
+  .problem-solution {
+    display: grid;
+    grid-template-columns: 1fr 40px 1fr;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 48px;
+  }
+  .ps-card {
+    border-radius: 16px;
+    padding: 28px;
+    min-height: 200px;
+  }
+  .ps-card.problem {
+    background: linear-gradient(135deg, #2d1f1f, #1a1215);
+    border: 1px solid #4a2020;
+  }
+  .ps-card.solution {
+    background: linear-gradient(135deg, #1a2d1f, #121a15);
+    border: 1px solid #1f4a2a;
+  }
+  .ps-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+  }
+  .ps-card.problem h3 { color: #ff6b6b; }
+  .ps-card.solution h3 { color: #4ade80; }
+  .ps-card ul { list-style: none; }
+  .ps-card li {
+    font-size: 14px;
+    line-height: 1.7;
+    padding: 4px 0;
+    padding-left: 20px;
+    position: relative;
+    color: #c0c0c0;
+  }
+  .ps-card.problem li::before { content: '✕'; position: absolute; left: 0; color: #ff6b6b; font-weight: 700; }
+  .ps-card.solution li::before { content: '✓'; position: absolute; left: 0; color: #4ade80; font-weight: 700; }
+  .arrow-col {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 28px;
+    color: #555;
+  }
+
+  /* ── 3개 카드 ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+  .card {
+    background: #1a1d27;
+    border: 1px solid #2a2d3a;
+    border-radius: 16px;
+    padding: 28px 24px;
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: #ff4b4b; }
+  .card .icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+  .card:nth-child(1) .icon { background: rgba(255, 75, 75, 0.15); }
+  .card:nth-child(2) .icon { background: rgba(74, 222, 128, 0.15); }
+  .card:nth-child(3) .icon { background: rgba(96, 165, 250, 0.15); }
+  .card .num {
+    font-size: 12px;
+    font-weight: 700;
+    color: #ff4b4b;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .card h3 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 10px;
+  }
+  .card p {
+    font-size: 13px;
+    color: #8b8fa3;
+    line-height: 1.65;
+    margin-bottom: 14px;
+  }
+  .card .metric {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #2a2d3a;
+  }
+  .card .metric .before {
+    font-size: 18px;
+    font-weight: 300;
+    color: #666;
+    text-decoration: line-through;
+  }
+  .card .metric .arrow-sm { font-size: 16px; color: #555; }
+  .card .metric .after {
+    font-size: 22px;
+    font-weight: 900;
+    color: #4ade80;
+  }
+  .card .metric .unit {
+    font-size: 12px;
+    color: #8b8fa3;
+  }
+
+  /* ── 코드 블록 ── */
+  .code-section {
+    margin-bottom: 48px;
+  }
+  .code-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ff4b4b;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+  }
+  .code-block {
+    background: #161922;
+    border: 1px solid #2a2d3a;
+    border-radius: 12px;
+    padding: 24px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-x: auto;
+    color: #c0c8d8;
+  }
+  .code-block .comment { color: #5c6370; font-style: italic; }
+  .code-block .decorator { color: #ff6b6b; font-weight: 700; }
+  .code-block .func { color: #61afef; }
+  .code-block .keyword { color: #c678dd; }
+  .code-block .string { color: #98c379; }
+  .code-block .param { color: #e5c07b; }
+  .code-block .number { color: #d19a66; }
+
+  /* ── 플로우차트 ── */
+  .flow-section {
+    margin-bottom: 48px;
+  }
+  .flow-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ff4b4b;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    justify-content: center;
+  }
+  .flow-step {
+    text-align: center;
+    flex: 0 0 200px;
+  }
+  .flow-step .box {
+    border-radius: 12px;
+    padding: 20px 16px;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  .flow-step:nth-child(1) .box { background: linear-gradient(135deg, #2d2020, #1a1215); border: 1px solid #4a2525; }
+  .flow-step:nth-child(3) .box { background: linear-gradient(135deg, #20202d, #121525); border: 1px solid #25254a; }
+  .flow-step:nth-child(5) .box { background: linear-gradient(135deg, #1a2d1f, #121a15); border: 1px solid #1f4a2a; }
+  .flow-step .box .emoji { font-size: 28px; margin-bottom: 8px; }
+  .flow-step .box .title { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .flow-step .box .desc { font-size: 12px; color: #8b8fa3; line-height: 1.5; }
+  .flow-step .box .time {
+    margin-top: 8px;
+    font-size: 18px;
+    font-weight: 900;
+  }
+  .flow-step:nth-child(1) .box .time { color: #ff6b6b; }
+  .flow-step:nth-child(3) .box .time { color: #60a5fa; }
+  .flow-step:nth-child(5) .box .time { color: #4ade80; }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 60px;
+    position: relative;
+  }
+  .flow-arrow::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 2px;
+    background: #3a3d4a;
+  }
+  .flow-arrow .label {
+    position: absolute;
+    top: calc(50% - 28px);
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap;
+  }
+
+  /* ── 아키텍처 다이어그램 ── */
+  .arch-section {
+    margin-bottom: 48px;
+  }
+  .arch-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ff4b4b;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .arch {
+    background: #161922;
+    border: 1px solid #2a2d3a;
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .arch-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .arch-row:last-child { margin-bottom: 0; }
+  .arch-node {
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 140px;
+  }
+  .arch-node.app { background: #2d2040; border: 1px solid #5b3a8a; color: #c4b5fd; }
+  .arch-node.cache { background: #1a2d1f; border: 1px solid #1f4a2a; color: #4ade80; }
+  .arch-node.api { background: #2d2020; border: 1px solid #4a2525; color: #fca5a5; }
+  .arch-node.data { background: #20252d; border: 1px solid #25354a; color: #93c5fd; }
+  .arch-connector {
+    font-size: 16px;
+    color: #3a3d4a;
+  }
+  .arch-vconnector {
+    text-align: center;
+    font-size: 16px;
+    color: #3a3d4a;
+    padding: 2px 0;
+  }
+  .arch-label {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    padding: 2px 0;
+  }
+  .arch-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .arch-node.small {
+    min-width: 100px;
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+
+  /* ── 푸터 ── */
+  .footer {
+    text-align: center;
+    padding: 24px 0;
+    border-top: 1px solid #1e2030;
+    margin-top: 20px;
+  }
+  .footer p {
+    font-size: 12px;
+    color: #555;
+  }
+
+  @media (max-width: 768px) {
+    .problem-solution { grid-template-columns: 1fr; gap: 16px; }
+    .arrow-col { transform: rotate(90deg); }
+    .cards { grid-template-columns: 1fr; }
+    .flow { flex-direction: column; align-items: center; }
+    .flow-arrow { transform: rotate(90deg); flex: 0 0 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div class="badge">LOCATION ANALYSIS TOOL</div>
+    <h1>v4.3 클라우드 환경 최적화</h1>
+    <p>Streamlit Cloud의 메모리·타임아웃 제한을 극복하기 위한 3가지 핵심 개선</p>
+  </div>
+
+  <!-- 문제 → 해결 -->
+  <div class="problem-solution">
+    <div class="ps-card problem">
+      <h3>Before &mdash; 문제점</h3>
+      <ul>
+        <li>위젯 클릭 시 전체 데이터 수집 재실행 (2~3분)</li>
+        <li>건축물대장 지오코딩 순차 처리 (~80초)</li>
+        <li>Streamlit Cloud 응답 타임아웃 → 홈 화면 복귀</li>
+        <li>osmnx 1.9.4 (존재하지 않는 버전) 빌드 실패</li>
+      </ul>
+    </div>
+    <div class="arrow-col">→</div>
+    <div class="ps-card solution">
+      <h3>After &mdash; 해결</h3>
+      <ul>
+        <li>@st.cache_data 캐싱 → 재실행 시 즉시 반환</li>
+        <li>ThreadPoolExecutor 병렬 지오코딩 (~15초)</li>
+        <li>첫 분석 이후 타임아웃 없음</li>
+        <li>osmnx>=2.0.0 하한 지정 → 빌드 안정</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 3대 개선 카드 -->
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🗄️</div>
+      <div class="num">IMPROVEMENT 01</div>
+      <h3>@st.cache_data 캐싱</h3>
+      <p><code>_cached_collect_all()</code>과 <code>_cached_income_rent()</code>로 API 수집 결과를 GeoJSON 직렬화하여 1시간 동안 캐싱합니다.</p>
+      <p>같은 지역·업종 조합이면 API를 다시 호출하지 않고 캐시에서 즉시 반환합니다.</p>
+      <div class="metric">
+        <span class="before">2~3분</span>
+        <span class="arrow-sm">→</span>
+        <span class="after">0</span>
+        <span class="unit">초 (캐시 히트 시)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="icon">⚡</div>
+      <div class="num">IMPROVEMENT 02</div>
+      <h3>지오코딩 병렬화</h3>
+      <p>건축물대장 API에서 수집한 주소 ~200건을 카카오 지오코딩 API로 좌표 변환할 때, <code>ThreadPoolExecutor(10)</code>으로 10개씩 동시 처리합니다.</p>
+      <div class="metric">
+        <span class="before">~80초</span>
+        <span class="arrow-sm">→</span>
+        <span class="after">~15</span>
+        <span class="unit">초 (5배 단축)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="icon">📦</div>
+      <div class="num">IMPROVEMENT 03</div>
+      <h3>의존성 호환</h3>
+      <p>고정 버전(<code>==</code>)에서 하한 지정(<code>>=</code>)으로 변경하여 Streamlit Cloud 빌드 환경과의 호환성을 확보합니다.</p>
+      <p><code>osmnx==1.9.4</code> (미존재) → <code>osmnx>=2.0.0</code></p>
+      <div class="metric">
+        <span class="before">빌드 실패</span>
+        <span class="arrow-sm">→</span>
+        <span class="after">안정</span>
+        <span class="unit">빌드</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 캐싱 코드 -->
+  <div class="code-section">
+    <h3>핵심 코드 &mdash; 캐싱 적용</h3>
+    <div class="code-block">
+      <span class="decorator">@st.cache_data</span>(<span class="param">show_spinner</span>=<span class="keyword">False</span>, <span class="param">ttl</span>=<span class="number">3600</span>)<br>
+      <span class="keyword">def</span> <span class="func">_cached_collect_all</span>(<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;region, category, keyword, cell_size_m,<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;vworld_key, building_key, _kakao_key,<br>
+      ) -> <span class="keyword">dict</span>:<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment"># API 호출 → GeoDataFrame → GeoJSON 직렬화</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;data = <span class="func">collect_all</span>(...)<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> k, v <span class="keyword">in</span> data.items():<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> isinstance(v, GeoDataFrame):<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;result[k] = v.<span class="func">to_json</span>()&nbsp;&nbsp;<span class="comment"># 직렬화 가능한 문자열</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">return</span> result<br>
+      <br>
+      <span class="comment"># 캐시에서 복원: GeoJSON 문자열 → GeoDataFrame</span><br>
+      boundary = <span class="func">_json_to_gdf</span>(cached[<span class="string">"boundary"</span>])
+    </div>
+  </div>
+
+  <!-- 동작 흐름 -->
+  <div class="flow-section">
+    <h3>클라우드 동작 흐름</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="box">
+          <div class="emoji">🔍</div>
+          <div class="title">첫 분석</div>
+          <div class="desc">API 600회+ 호출<br>모든 데이터 수집</div>
+          <div class="time">2~3분</div>
+        </div>
+      </div>
+      <div class="flow-arrow"><span class="label">캐싱</span></div>
+      <div class="flow-step">
+        <div class="box">
+          <div class="emoji">💾</div>
+          <div class="title">캐시 저장</div>
+          <div class="desc">GeoJSON 직렬화<br>메모리에 보관 (1h TTL)</div>
+          <div class="time">자동</div>
+        </div>
+      </div>
+      <div class="flow-arrow"><span class="label">재실행</span></div>
+      <div class="flow-step">
+        <div class="box">
+          <div class="emoji">⚡</div>
+          <div class="title">이후 상호작용</div>
+          <div class="desc">캐시 히트<br>API 재호출 없음</div>
+          <div class="time">0초</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 아키텍처 -->
+  <div class="arch-section">
+    <h3>캐싱 아키텍처</h3>
+    <div class="arch">
+      <div class="arch-row">
+        <div class="arch-node app">🖥️ Streamlit App<br><small>app_Ver4.3.py</small></div>
+      </div>
+      <div class="arch-vconnector">↓ 분석 시작</div>
+      <div class="arch-row">
+        <div class="arch-node cache">✅ st.cache_data<br><small>파라미터 해시 비교</small></div>
+      </div>
+      <div class="arch-row" style="gap: 80px;">
+        <div style="text-align:center;">
+          <div class="arch-vconnector" style="color:#4ade80;">↓ 캐시 히트</div>
+          <div class="arch-node data">💨 즉시 반환<br><small>GeoJSON → GDF</small></div>
+        </div>
+        <div style="text-align:center;">
+          <div class="arch-vconnector" style="color:#ff6b6b;">↓ 캐시 미스</div>
+          <div class="arch-node api">🌐 API 호출<br><small>collect_all()</small></div>
+        </div>
+      </div>
+      <div class="arch-label" style="margin-top:12px; margin-bottom:8px;">API 수집 대상 (캐시 미스 시에만)</div>
+      <div class="arch-group">
+        <div class="arch-node small api">카카오 로컬</div>
+        <div class="arch-node small api">Overpass API</div>
+        <div class="arch-node small api">건축물대장</div>
+        <div class="arch-node small api">공공데이터포털</div>
+        <div class="arch-node small api">SGIS 통계</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="footer">
+    <p>입지 선정 분석 툴 v4.3 &middot; Streamlit Cloud Optimization &middot; 2026-03-31</p>
+  </div>
+
+</div>
+</body>
+</html>
