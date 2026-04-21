@@ -25,11 +25,10 @@ from shapely.geometry import Point
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import CRS_WGS84, CRS_KOREA, KAKAO_API_KEY
+from config import CRS_WGS84, CRS_KOREA
+from src import session_keys
 
 log = logging.getLogger(__name__)
-
-DATA_GO_KR_API_KEY = os.environ.get("DATA_GO_KR_API_KEY", "")
 
 # API 엔드포인트
 _APT_TRADE_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev"
@@ -41,8 +40,8 @@ _KAKAO_ADDRESS_URL      = "https://dapi.kakao.com/v2/local/search/address.json"
 
 
 def is_data_api_available() -> bool:
-    """공공데이터포털 API 키 설정 여부 확인."""
-    return bool(DATA_GO_KR_API_KEY)
+    """공공데이터포털 API 키 설정 여부 확인 (세션별 격리)."""
+    return bool(session_keys.get("DATA_GO_KR_API_KEY"))
 
 
 # ─────────────────────────────────────────────────────────
@@ -53,7 +52,7 @@ def _get_lawd_code(boundary_gdf: gpd.GeoDataFrame) -> str | None:
     """
     분석 영역 중심점 → 카카오 역지오코딩 → 법정동 시군구코드(5자리) 반환.
     """
-    kakao_key = os.environ.get("KAKAO_API_KEY", KAKAO_API_KEY or "")
+    kakao_key = session_keys.get("KAKAO_API_KEY")
     if not kakao_key:
         log.warning("카카오 API 키 미설정 → 법정동코드 조회 불가")
         return None
@@ -94,7 +93,7 @@ def _get_lawd_code(boundary_gdf: gpd.GeoDataFrame) -> str | None:
 
 def _get_region_name(boundary_gdf: gpd.GeoDataFrame) -> str:
     """분석 영역 중심점 → 카카오 역지오코딩 → 시군구명 반환."""
-    kakao_key = os.environ.get("KAKAO_API_KEY", KAKAO_API_KEY or "")
+    kakao_key = session_keys.get("KAKAO_API_KEY")
     if not kakao_key:
         return ""
 
@@ -131,7 +130,7 @@ def _geocode_dong(region_prefix: str, dong_name: str) -> tuple[float, float] | N
     if cache_key in _geocode_cache:
         return _geocode_cache[cache_key]
 
-    kakao_key = os.environ.get("KAKAO_API_KEY", KAKAO_API_KEY or "")
+    kakao_key = session_keys.get("KAKAO_API_KEY")
     if not kakao_key:
         return None
 
@@ -162,7 +161,7 @@ def _geocode_dong(region_prefix: str, dong_name: str) -> tuple[float, float] | N
 def _call_data_api(url: str, lawd_cd: str, deal_ymd: str) -> list[dict]:
     """공공데이터포털 API 호출 → 아이템 리스트 반환."""
     params = {
-        "serviceKey": DATA_GO_KR_API_KEY,
+        "serviceKey": session_keys.get("DATA_GO_KR_API_KEY"),
         "LAWD_CD": lawd_cd,
         "DEAL_YMD": deal_ymd,
         "pageNo": "1",
@@ -226,7 +225,7 @@ def diagnose_api(lawd_cd: str = "11680", deal_ymd: str = "202501") -> dict:
     results = {}
     for name, url in [("trade", _APT_TRADE_URL), ("rent", _APT_RENT_URL)]:
         params = {
-            "serviceKey": DATA_GO_KR_API_KEY,
+            "serviceKey": session_keys.get("DATA_GO_KR_API_KEY"),
             "LAWD_CD": lawd_cd,
             "DEAL_YMD": deal_ymd,
             "pageNo": "1",

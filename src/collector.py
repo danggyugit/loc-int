@@ -15,10 +15,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (
     CRS_WGS84, CRS_KOREA,
-    KAKAO_API_KEY, KAKAO_LOCAL_URL, KAKAO_CATEGORY_URL,
+    KAKAO_LOCAL_URL, KAKAO_CATEGORY_URL,
     KAKAO_MAX_PAGE, KAKAO_PAGE_SIZE, KAKAO_CATEGORY,
     KAKAO_RADIUS_MAX,
 )
+from src import session_keys
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def get_boundary(region: str) -> gpd.GeoDataFrame:
 def _get_boundary_bbox(region: str) -> gpd.GeoDataFrame:
     """카카오 주소 검색으로 중심 좌표를 얻고 근사 bounding box 생성 (OSM 폴백)."""
     url = "https://dapi.kakao.com/v2/local/search/address.json"
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     resp = requests.get(url, headers=headers, params={"query": region}, timeout=10)
     resp.raise_for_status()
     docs = resp.json().get("documents", [])
@@ -105,7 +106,7 @@ def get_competitors(category: str, boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDat
     if cat_code is None:
         raise ValueError(f"알 수 없는 업종: '{category}'. 허용값: {list(KAKAO_CATEGORY.keys())}")
 
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=5000)
     log.info(f"경쟁업체 수집 시작: {category} ({len(search_points)}개 격자 중심)")
 
@@ -182,7 +183,7 @@ def get_transport(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     Returns:
         교통 인프라 GeoDataFrame (EPSG:4326)
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=8000)
     records = []
     seen_ids = set()
@@ -268,7 +269,7 @@ def get_population_proxy(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame | N
     Returns:
         아파트 위치 GeoDataFrame (인구 proxy, population 컬럼 = 1)
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=6000)
     records = []
     seen_ids = set()
@@ -331,7 +332,7 @@ def get_parking(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     Returns:
         주차장 GeoDataFrame (EPSG:4326)
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=6000)
     records = []
     seen_ids = set()
@@ -413,7 +414,7 @@ def get_commercial_diversity(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame
     Returns:
         GeoDataFrame (EPSG:4326) — cat_code, cat_name 컬럼 포함
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=8000)
     records = []
     seen_ids = set()
@@ -493,7 +494,7 @@ def get_competitors_by_keyword(keyword: str, boundary_gdf: gpd.GeoDataFrame) -> 
     Returns:
         경쟁업체 GeoDataFrame (EPSG:4326)
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_API_KEY}"}
+    headers = {"Authorization": f"KakaoAK {session_keys.get('KAKAO_API_KEY')}"}
     search_points = _make_search_grid(boundary_gdf, step_m=5000)
     log.info(f"키워드 검색 시작: '{keyword}' ({len(search_points)}개 격자)")
 
@@ -638,7 +639,7 @@ def collect_all(region: str, category: str = None, keyword: str = None,
             return None
 
     def _task_buildings():
-        kakao_key_runtime = os.environ.get("KAKAO_API_KEY", "")
+        kakao_key_runtime = session_keys.get("KAKAO_API_KEY")
         if building_key and kakao_key_runtime:
             try:
                 from src.building_client import get_commercial_buildings
@@ -658,6 +659,14 @@ def collect_all(region: str, category: str = None, keyword: str = None,
             return None
 
     # ── 병렬 실행 (max_workers=4: API rate limit 고려) ────
+    # Why: worker 스레드는 새로 생성되므로 상위 세션의 API 키를 못 봄.
+    #      snapshot()을 떠서 각 worker 시작 시 apply()로 복원.
+    _keys_snapshot = session_keys.snapshot()
+
+    def _run_with_keys(fn):
+        session_keys.apply(_keys_snapshot)
+        return fn()
+
     task_map = {
         "competitor": _task_competitor,
         "transport":  _task_transport,
@@ -671,7 +680,7 @@ def collect_all(region: str, category: str = None, keyword: str = None,
 
     results = {}
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(fn): key for key, fn in task_map.items()}
+        futures = {executor.submit(_run_with_keys, fn): key for key, fn in task_map.items()}
         for future in as_completed(futures):
             key = futures[future]
             try:

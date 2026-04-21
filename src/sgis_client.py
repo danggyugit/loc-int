@@ -31,6 +31,7 @@ from config import (
     CRS_WGS84, CRS_KOREA,
     SGIS_BASE_URL,
 )
+from src import session_keys
 
 log = logging.getLogger(__name__)
 
@@ -46,13 +47,10 @@ _SAMPLE_STEP = 200
 # ─────────────────────────────────────────────────────────
 
 def _get_sgis_keys() -> tuple[str, str]:
-    """SGIS API 키를 런타임에 환경변수에서 읽음.
-    Why: Streamlit 앱에서 sidebar 입력으로 환경변수를 동적 설정하므로
-         모듈 로드 시점이 아닌 호출 시점에 읽어야 함."""
-    import os
+    """세션별 격리된 SGIS API 키 조회 (process os.environ 오염 방지)."""
     return (
-        os.environ.get("SGIS_CONSUMER_KEY", ""),
-        os.environ.get("SGIS_CONSUMER_SECRET", ""),
+        session_keys.get("SGIS_CONSUMER_KEY"),
+        session_keys.get("SGIS_CONSUMER_SECRET"),
     )
 
 

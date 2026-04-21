@@ -9,17 +9,20 @@
 
 ---
 
-## 현재 활성 파일 (v4.6 기준)
+## 현재 활성 파일 (v4.9 기준)
 
 | 영역 | 활성 파일 | 비고 |
 |---|---|---|
-| 메인 앱 | `app_Ver4.6.py` | v4.0~v4.5는 이력 보존용 (src/ 구버전 의존으로 실행 불가) |
-| 점수화 | `src/scoring_Ver4_3.py` | |
-| 시각화 | `src/visualizer_Ver4_2.py` | |
+| 메인 앱 | `app_Ver4.9.py` | v4.0~v4.8은 이력 보존용 (구 src 의존 또는 session_keys 미사용) |
+| 점수화 | `src/scoring_Ver4_3.py` | 11팩터 |
+| 시각화 | `src/visualizer_Ver4_2.py` | folium + matplotlib |
 | 데이터 수집 | `src/collector.py`, `src/rent_income_client.py`, `src/building_client.py`, `src/vworld_client.py`, `src/sgis_client.py`, `src/keyword_classifier.py` | 단일 버전 |
 | 분석 | `src/grid.py`, `src/cluster.py` | 단일 버전 |
+| 세션 격리 | `src/session_keys.py` | API 키를 threading.local에 저장하여 다중 사용자 세션 격리 (v4.9 신규) |
 | 구버전 | `src/_deprecated/` | scoring.py / scoring_Ver4_2.py / visualizer.py / visualizer_Ver4_1.py |
 | 전역 상수 | `config.py` | `PRESETS`, `SIDO_GU_MAP`, 좌표계, API URL 등 |
+
+**중요 — API 키 취급:** Streamlit Cloud는 하나의 Python 프로세스에서 여러 세션을 실행함. `os.environ` 쓰기는 프로세스 전역이라 사용자 간 키 유출 위험. **반드시 `session_keys.set_keys(...)`로 설정**하고 `session_keys.get("...")`로 읽을 것. ThreadPoolExecutor 사용 시 `snapshot()`/`apply()`로 worker에 전파.
 
 새 버전 작업 시: `app_Ver<N+1>.py` 신규 생성, `src/` 내 활성 파일은 덮어쓰기 가능(버전 접미사 없는 모듈) 또는 `_Ver<N>.py` 신규 생성(점수화/시각화처럼 큰 변경). 구버전으로 대체되면 해당 파일을 `src/_deprecated/`로 이동하고 이 표를 갱신할 것.
 
