@@ -9,11 +9,11 @@
 
 ---
 
-## 현재 활성 파일 (v4.9 기준)
+## 현재 활성 파일 (v5.0 기준)
 
 | 영역 | 활성 파일 | 비고 |
 |---|---|---|
-| 메인 앱 | `app_Ver4.9.py` | v4.0~v4.8은 이력 보존용 (구 src 의존 또는 session_keys 미사용) |
+| 메인 앱 | `app_Ver5.0.py` | v4.0~v4.9는 이력 보존용 |
 | 점수화 | `src/scoring_Ver4_3.py` | 11팩터 |
 | 시각화 | `src/visualizer_Ver4_2.py` | folium + matplotlib |
 | 데이터 수집 | `src/collector.py`, `src/rent_income_client.py`, `src/building_client.py`, `src/vworld_client.py`, `src/sgis_client.py`, `src/keyword_classifier.py` | 단일 버전 |
