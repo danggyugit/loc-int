@@ -394,7 +394,7 @@ if run_btn:
         ) as status:
             # Step 1. 구별 데이터 수집 → 병합 (v4.4: 다중 구 지원)
             # Why: 각 구별로 캐싱이 적용되므로 이전에 수집한 구는 즉시 반환
-            current_step = "Step 1/7 · 행정경계·경쟁업체·교통·인구 수집"
+            current_step = "Step 1/8 · 행정경계·경쟁업체·교통·인구 수집"
             st.write(f"📥 {current_step}")
 
             boundaries  = []
@@ -433,7 +433,7 @@ if run_btn:
                 pop_source = cached.get("pop_source", pop_source)
 
             # 병합 — 카카오 ID 보유 데이터셋은 인접 구 경계 중첩 시 중복 들어오므로 dedup
-            current_step = "Step 2/7 · 데이터 병합·중복 제거"
+            current_step = "Step 2/8 · 데이터 병합·중복 제거"
             st.write(f"🔗 {current_step}")
             boundary   = _merge_gdfs(boundaries)
             competitor = _merge_gdfs(competitors,  dedup_col="biz_id")
@@ -450,7 +450,7 @@ if run_btn:
                 st.write(f"  · {n_gus}개 구 병합 완료")
 
             # Step 3. 소득·월세 데이터 수집 — 구별 캐싱 후 병합
-            current_step = "Step 3/7 · 소득·월세 수집"
+            current_step = "Step 3/8 · 소득·월세 수집"
             st.write(f"💰 {current_step}")
             from src.rent_income_client import assign_nearest_to_grid
             income_gdfs = []
@@ -508,7 +508,7 @@ if run_btn:
                 st.write(f"  ✅ 도로: {len(roads)}개 세그먼트")
 
             # Step 4. 격자 생성 (11팩터) — 병합된 boundary 사용
-            current_step = "Step 4/7 · 격자 생성 및 지표 집계"
+            current_step = "Step 4/8 · 격자 생성 및 지표 집계"
             st.write(f"🗺️ {current_step}")
             from src.grid import build_grid_features
             grid = build_grid_features(
@@ -537,7 +537,7 @@ if run_btn:
                 grid["rent"] = 0.0
 
             # Step 5. 11팩터 점수화
-            current_step = "Step 5/7 · 11팩터 점수화"
+            current_step = "Step 5/8 · 11팩터 점수화"
             st.write(f"📈 {current_step}")
             from src.scoring_Ver4_3 import score_and_rank
             scored, top, profile = score_and_rank(
@@ -560,12 +560,18 @@ if run_btn:
                 pop_threshold=0.3,
             )
 
-            # Step 7. 주소 역지오코딩 (격자 ID → 법정동/도로명)
-            current_step = "Step 7/8 · 주소 부여"
+            # Step 7. 주소 역지오코딩 (상위 100개만 병렬 호출)
+            # Why: 전체 격자 역지오코딩은 비용 과다 (셀당 1회 × 수백개 = 수 분).
+            #      상위 100개만 법정동 + 상위 10개 도로명이면 2~5초로 단축.
+            current_step = "Step 7/8 · 주소 부여 (상위 100개)"
             st.write(f"📮 {current_step}")
             try:
                 from src.geocoding import annotate_addresses
-                scored, top = annotate_addresses(scored, top, top_with_road=10)
+                scored, top = annotate_addresses(
+                    scored, top,
+                    top_with_region=100,
+                    top_with_road=10,
+                )
                 _n_addr = (scored["address"].str.len() > 0).sum()
                 st.write(f"  · 법정동 {_n_addr:,}개 / 도로명 상위 {min(10, len(top))}개")
             except Exception as e:
