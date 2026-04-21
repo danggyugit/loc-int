@@ -24,7 +24,7 @@
 
 **중요 — API 키 취급:** Streamlit Cloud는 하나의 Python 프로세스에서 여러 세션을 실행함. `os.environ` 쓰기는 프로세스 전역이라 사용자 간 키 유출 위험. **반드시 `session_keys.set_keys(...)`로 설정**하고 `session_keys.get("...")`로 읽을 것. ThreadPoolExecutor 사용 시 `snapshot()`/`apply()`로 worker에 전파.
 
-새 버전 작업 시: `app_Ver<N+1>.py` 신규 생성, `src/` 내 활성 파일은 덮어쓰기 가능(버전 접미사 없는 모듈) 또는 `_Ver<N>.py` 신규 생성(점수화/시각화처럼 큰 변경). 구버전으로 대체되면 해당 파일을 `src/_deprecated/`로 이동하고 이 표를 갱신할 것.
+**버전 관리 종료 (2026-04-22~):** 이 프로젝트는 더 이상 버전 파일 생성 안 함. 변경은 **`app_Ver5.1.py`에 직접 수정** (이름 유지, 버전 번호는 라벨로만 의미). src/ 모듈도 동일 — 신규 `_Ver<N>.py` 만들지 말고 활성 파일 덮어쓰기. 변경 이력은 git commit으로 추적. 상위 공통 규칙(`py/CLAUDE.md`의 "파일명_Ver1.0.py 신규 생성")과 **예외**임.
 
 ---
 

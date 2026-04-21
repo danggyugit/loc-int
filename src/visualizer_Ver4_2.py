@@ -245,6 +245,157 @@ def plot_score_bar(
 
 
 # ─────────────────────────────────────────────────────────
+# V-03b: 11팩터 레이더 차트 (Top 1 프로필)
+# ─────────────────────────────────────────────────────────
+
+# 축별 라벨과 positive/negative 방향
+# Why: competitor/rent는 낮을수록 좋으므로 percentile 계산 시 반전
+_RADAR_FACTORS = [
+    ("population",      "인구",         False),
+    ("floating",        "유동인구",     False),
+    ("workplace",       "직장인구",     False),
+    ("competitor_cnt",  "경쟁 희소성",  True),   # 반전
+    ("transport_score", "교통 접근성",  False),
+    ("parking_cnt",     "주차",         False),
+    ("diversity",       "상권 다양성",  False),
+    ("income",          "소득 수준",    False),
+    ("rent",            "월세 저렴",    True),   # 반전
+    ("commercial_cnt",  "상가 밀집",    False),
+    ("road_score",      "도로 접근성",  False),
+]
+
+
+def plot_radar_top1(
+    scored_gdf: pd.DataFrame,
+    top_gdf: pd.DataFrame,
+    out_path: str | None = None,
+    include_top2: bool = True,
+) -> str:
+    """1위 후보지의 11팩터 상대 위치(전체 대비 percentile)를 레이더로 표시.
+
+    Args:
+        scored_gdf: 전체 격자 (percentile 계산용)
+        top_gdf:    상위 후보지 (1위는 iloc[0])
+        include_top2: True면 2위 점선 오버레이로 비교
+
+    Why: 점수 하나로는 '왜' 1위인지 알 수 없음. 11개 팩터의 전체 대비 순위를
+         방사형으로 그리면 이 입지의 강점·약점이 한눈에 드러남.
+    """
+    out_path = out_path or str(OUTPUT_DIR / "chart_radar.png")
+    if len(top_gdf) == 0:
+        return out_path
+
+    # 사용 가능한 팩터만 필터 (데이터 누락 팩터 제외)
+    avail = [(c, lbl, inv) for c, lbl, inv in _RADAR_FACTORS if c in scored_gdf.columns]
+    n = len(avail)
+    if n == 0:
+        return out_path
+
+    def _percentile(row, factors):
+        """각 팩터에 대한 전체 대비 percentile (0~1)."""
+        out = []
+        for col, _, inv in factors:
+            series = scored_gdf[col]
+            val = row[col]
+            pct = float((series <= val).mean())
+            out.append(1.0 - pct if inv else pct)
+        return out
+
+    top1_pct = _percentile(top_gdf.iloc[0], avail)
+    labels = [lbl for _, lbl, _ in avail]
+
+    # 레이더를 닫기 위해 첫 값 끝에 반복
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False).tolist()
+    top1_pct_closed = top1_pct + [top1_pct[0]]
+    angles_closed = angles + [angles[0]]
+
+    fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={"projection": "polar"})
+    ax.plot(angles_closed, top1_pct_closed, color="#2E7D32", linewidth=2.2, label="1위")
+    ax.fill(angles_closed, top1_pct_closed, color="#2E7D32", alpha=0.22)
+
+    if include_top2 and len(top_gdf) >= 2:
+        top2_pct = _percentile(top_gdf.iloc[1], avail)
+        top2_closed = top2_pct + [top2_pct[0]]
+        ax.plot(angles_closed, top2_closed, color="#0277BD",
+                linewidth=1.3, linestyle="--", label="2위")
+
+    ax.set_theta_offset(np.pi / 2)
+    ax.set_theta_direction(-1)
+    ax.set_xticks(angles)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylim(0, 1)
+    ax.set_yticks([0.25, 0.5, 0.75])
+    ax.set_yticklabels(["25%", "50%", "75%"], fontsize=8, color="gray")
+    ax.set_title("1위 후보지 11팩터 프로필 (전체 대비 상위 %)",
+                 fontsize=12, fontweight="bold", pad=20)
+    ax.legend(loc="upper right", bbox_to_anchor=(1.20, 1.05), fontsize=9)
+    ax.grid(alpha=0.4)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    log.info(f"레이더 차트 저장: {out_path}")
+    return out_path
+
+
+# ─────────────────────────────────────────────────────────
+# V-03c: 점수 분포 히스토그램 (1위 위치 표시)
+# ─────────────────────────────────────────────────────────
+
+def plot_score_distribution(
+    scored_gdf: pd.DataFrame,
+    top_gdf: pd.DataFrame,
+    score_col: str = "score",
+    out_path: str | None = None,
+) -> str:
+    """전체 격자의 점수 분포를 히스토그램으로 그리고 1위 점수를 표시.
+
+    Why: 1위 후보지의 점수가 전체에서 얼마나 드문 값인지 파악하면
+         이 입지가 '압도적 1위'인지 '간신히 1위'인지 의사결정에 결정적.
+    """
+    out_path = out_path or str(OUTPUT_DIR / "chart_dist.png")
+    if len(scored_gdf) == 0 or len(top_gdf) == 0:
+        return out_path
+
+    scores = scored_gdf[score_col].values
+    top1_score = float(top_gdf.iloc[0][score_col])
+    top1_pct = float((scores <= top1_score).mean()) * 100
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    n, bins, patches = ax.hist(scores, bins=30, color="#B0BEC5",
+                                edgecolor="white", alpha=0.8)
+
+    # 1위 셀이 속한 bin만 강조색
+    top1_bin_idx = np.searchsorted(bins, top1_score) - 1
+    top1_bin_idx = max(0, min(top1_bin_idx, len(patches) - 1))
+    patches[top1_bin_idx].set_facecolor("#2E7D32")
+    patches[top1_bin_idx].set_alpha(1.0)
+
+    ax.axvline(top1_score, color="#E53935", linestyle="--", linewidth=1.5)
+    ax.annotate(
+        f"1위: {top1_score:.3f}\n(상위 {100 - top1_pct:.1f}%)",
+        xy=(top1_score, max(n) * 0.88),
+        xytext=(12, 0), textcoords="offset points",
+        fontsize=10, color="#E53935", fontweight="bold",
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#E53935", lw=1),
+    )
+
+    ax.set_xlabel("입지 점수", fontsize=11)
+    ax.set_ylabel("격자 수", fontsize=11)
+    ax.set_title(f"전체 {len(scored_gdf):,}개 격자의 점수 분포",
+                 fontsize=12, fontweight="bold", pad=10)
+    ax.spines[["top", "right"]].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    log.info(f"점수 분포 저장: {out_path}")
+    return out_path
+
+
+# ─────────────────────────────────────────────────────────
 # V-04: 클러스터 지도
 # ─────────────────────────────────────────────────────────
 

@@ -1,18 +1,24 @@
-# app_Ver5.1.py — 입지 선정 분석 툴 v5.1 (Streamlit 앱)
+# app_Ver5.1.py — 입지 선정 분석 툴 (단일 메인 파일)
 # 실행: streamlit run app_Ver5.1.py
 #
-# v5.0 대비 개선 사항 (UI 탐색성):
-#   1. 지도 범례 — 색상·마커 의미를 지도 위 캡션으로 명시
-#   2. 결과 테이블 필터 — 최소 점수, 경쟁 업체 최대, 용도지역 적합만
-#      토글로 수천 개 격자 중 의미있는 셀만 빠르게 확인
+# 버전 관리 종료 (2026-04-22~): 파일명은 유지하되 이 파일에 누적 수정.
+# 변경 이력은 git commit으로 추적.
 #
-# v5.0 기능 유지:
-#   1. 결과 요약 헤드라인 (1위 후보지 자연어 요약)
-#   2. 지도 HTML 다운로드
-#
-# v4.9 블로커 해소 유지:
-#   1. 세션별 API 키 격리 (session_keys)
-#   2. 분석 범위 상한 (구 5개·셀 8000개)
+# 누적 기능 요약:
+#   [주소·시각화]
+#     - 상위 후보지에 법정동+도로명 주소 자동 부여 (격자 ID 대체)
+#     - 11팩터 레이더 차트 (1위 프로필, 2위 오버레이)
+#     - 점수 분포 히스토그램 + 1위 percentile 표시
+#   [UX]
+#     - 결과 요약 헤드라인, 지도 HTML 다운로드, 지도 색상 범례,
+#       격자 테이블 필터(점수·경쟁·용도지역)
+#     - st.status 단계별 진행, 에러 컨텍스트 힌트
+#   [안전성]
+#     - 세션별 API 키 격리 (session_keys), 분석 범위 상한 (구 5개·셀 8000개)
+#     - 다중 구 분석 시 카카오 ID 중복 제거
+#   [분석 엔진]
+#     - 시/도 → 구/군/시 2단계 드롭다운, 다중 구 통합, 용도지역 하드 필터
+#     - 상가건물·도로접근성 포함 11팩터 점수 모델, 캐시 TTL 24시간
 #
 # 이전 버전(v4.8) 기능 유지:
 #   - 캐시 TTL 24시간, st.status 단계별 진행, 에러 컨텍스트 힌트
@@ -37,13 +43,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 # ── 한국어 폰트 설정 (다른 시각화 라이브러리 import 전에 설정) ──
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-plt.rcParams["font.family"] = "Malgun Gothic"
+
+# 한글 폰트: Windows는 Malgun Gothic, Linux(Streamlit Cloud)는 Nanum 계열 탐색
+# Why: 기존 하드코딩된 Malgun Gothic은 Cloud에서 한글이 □로 깨짐. 자동 폴백.
+import platform as _platform
+import matplotlib.font_manager as _fm
+_font_candidates = (
+    ["Malgun Gothic", "NanumGothic", "NanumBarunGothic"]
+    if _platform.system() == "Windows"
+    else ["NanumGothic", "NanumBarunGothic", "Nanum Gothic", "UnDotum", "Malgun Gothic"]
+)
+_installed = {f.name for f in _fm.fontManager.ttflist}
+for _fn in _font_candidates:
+    if _fn in _installed:
+        plt.rcParams["font.family"] = _fn
+        break
 plt.rcParams["axes.unicode_minus"] = False
 
 import folium
@@ -527,7 +548,7 @@ if run_btn:
             )
 
             # Step 6. 클러스터링
-            current_step = "Step 6/7 · 클러스터링"
+            current_step = "Step 6/8 · 클러스터링"
             st.write(f"🔍 {current_step}")
             from src.cluster import run_cluster_analysis
             cluster_gdf, cluster_summary, gap_gdf = run_cluster_analysis(
@@ -539,8 +560,24 @@ if run_btn:
                 pop_threshold=0.3,
             )
 
-            # Step 7. 차트 저장
-            current_step = "Step 7/7 · 차트·CSV 생성"
+            # Step 7. 주소 역지오코딩 (격자 ID → 법정동/도로명)
+            current_step = "Step 7/8 · 주소 부여"
+            st.write(f"📮 {current_step}")
+            try:
+                from src.geocoding import annotate_addresses
+                scored, top = annotate_addresses(scored, top, top_with_road=10)
+                _n_addr = (scored["address"].str.len() > 0).sum()
+                st.write(f"  · 법정동 {_n_addr:,}개 / 도로명 상위 {min(10, len(top))}개")
+            except Exception as e:
+                log.warning(f"역지오코딩 건너뜀: {e}")
+                st.write("  ⚠️ 주소 조회 실패 — 격자 ID로 표시")
+                if "address" not in scored.columns:
+                    scored["address"] = ""
+                if "display_address" not in top.columns:
+                    top["display_address"] = top["grid_id"]
+
+            # Step 8. 차트·CSV 저장
+            current_step = "Step 8/8 · 차트·CSV 생성"
             st.write(f"📊 {current_step}")
             out_dir    = Path("output")
             out_dir.mkdir(exist_ok=True)
@@ -548,11 +585,25 @@ if run_btn:
             safe_gus   = "+".join(g.replace(" ", "") for g in selected_gus)
             prefix     = f"{sido}_{safe_gus}_{safe_label}"
 
-            from src.visualizer_Ver4_2 import plot_score_bar
-            top["name"] = top["grid_id"]
-            chart_path  = plot_score_bar(
+            from src.visualizer_Ver4_2 import (
+                plot_score_bar, plot_radar_top1, plot_score_distribution,
+            )
+            # 바 차트 라벨: 도로명 주소 있으면 그걸, 없으면 grid_id
+            top["name"] = top.get("display_address", top["grid_id"]).where(
+                top.get("display_address", pd.Series([""] * len(top))).astype(str).str.len() > 0,
+                top["grid_id"],
+            )
+            chart_path = plot_score_bar(
                 top, name_col="name",
                 out_path=str(out_dir / f"{prefix}_scores.png"),
+            )
+            radar_path = plot_radar_top1(
+                scored, top,
+                out_path=str(out_dir / f"{prefix}_radar.png"),
+            )
+            dist_path = plot_score_distribution(
+                scored, top,
+                out_path=str(out_dir / f"{prefix}_dist.png"),
             )
             csv_path = out_dir / f"{prefix}_top{top_n}.csv"
             top.drop(columns="geometry").to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -574,6 +625,8 @@ if run_btn:
             "transport":       transport,
             "population":      population,
             "chart_path":      chart_path,
+            "radar_path":      radar_path,
+            "dist_path":       dist_path,
             "csv_path":        csv_path,
             "prefix":          prefix,
             "top_n":           top_n,
@@ -628,6 +681,8 @@ competitor      = cache["competitor"]
 transport       = cache["transport"]
 population      = cache["population"]
 chart_path      = cache["chart_path"]
+radar_path      = cache.get("radar_path")
+dist_path       = cache.get("dist_path")
 csv_path        = cache["csv_path"]
 region_label    = cache["region"]
 label_text      = cache["label"]
@@ -657,6 +712,7 @@ if len(top) > 0:
     _top1_pop   = int(_top1.get("population", 0))
     _top1_trans = int(_top1.get("transport_score", 0))
     _top1_grid  = _top1.get("grid_id", "-")
+    _top1_addr  = _top1.get("display_address", "") or _top1.get("address", "")
 
     # 경쟁 수준 자연어
     if _top1_comp <= 2:
@@ -684,8 +740,10 @@ if len(top) > 0:
     if n_gap > 0:
         _hints.append(f"경쟁 공백 지역 **{n_gap}셀** 발견")
 
+    # 헤더: 주소 있으면 주소 사용, 없으면 격자 ID
+    _top1_title = _top1_addr if _top1_addr else f"격자 `{_top1_grid}`"
     st.markdown(
-        f"### 🏆 1위 후보지 · 격자 `{_top1_grid}`\n"
+        f"### 🏆 1위 후보지 · {_top1_title}\n"
         + " · ".join(_hints) + "  \n"
         f"_지도의 **1번 마커**에서 위치 확인 — 아래 테이블에서 하위 순위 비교 가능_"
     )
@@ -803,8 +861,26 @@ with map_col:
     st_folium(folium_map, height=550, use_container_width=True, returned_objects=[])
 
 with chart_col:
-    st.subheader(f"🏆 상위 {top_n_cached}개 후보지")
-    st.image(chart_path, use_container_width=True)
+    st.subheader("📊 후보지 분석")
+    # 3개 차트를 탭으로 구성: 바·레이더·분포
+    _tab_bar, _tab_radar, _tab_dist = st.tabs(
+        ["🏆 상위 점수", "🧭 1위 프로필", "📈 점수 분포"]
+    )
+    with _tab_bar:
+        st.image(chart_path, use_container_width=True)
+        st.caption(f"상위 {top_n_cached}개 후보지 점수 비교")
+    with _tab_radar:
+        if radar_path and Path(radar_path).exists():
+            st.image(radar_path, use_container_width=True)
+            st.caption("전체 격자 대비 각 팩터의 상위 %. 바깥쪽일수록 해당 팩터 우위.")
+        else:
+            st.info("레이더 차트 없음")
+    with _tab_dist:
+        if dist_path and Path(dist_path).exists():
+            st.image(dist_path, use_container_width=True)
+            st.caption("1위 점수의 희소성을 히스토그램으로 확인.")
+        else:
+            st.info("분포 차트 없음")
 
 # 전체 격자 상세 테이블 (v4.4: 후보지 + 비후보지 모두 표시)
 st.markdown("---")
@@ -857,7 +933,7 @@ if len(_filtered) != len(all_cells):
 all_cells = _filtered
 
 display_cols = [
-    "rank", "grid_id", "population", "floating", "workplace",
+    "rank", "address", "grid_id", "population", "floating", "workplace",
     "competitor_cnt", "transport_score", "parking_cnt", "diversity",
     "income", "rent", "commercial_cnt", "road_score", "zone_score", "score",
 ]
@@ -892,7 +968,8 @@ selection = st.dataframe(
     key="candidate_table",
     column_config={
         "rank":            st.column_config.NumberColumn("순위", width="small"),
-        "grid_id":         st.column_config.TextColumn("격자 ID"),
+        "address":         st.column_config.TextColumn("위치 (법정동)", width="medium"),
+        "grid_id":         st.column_config.TextColumn("격자 ID", width="small"),
         "population":      st.column_config.NumberColumn("인구"),
         "floating":        st.column_config.NumberColumn("유동인구"),
         "workplace":       st.column_config.NumberColumn("직장인구"),
