@@ -566,6 +566,9 @@ def collect_all(region: str, category: str = None, keyword: str = None,
     """
     지역명 + 업종(또는 키워드)으로 분석에 필요한 모든 데이터를 자동 수집.
 
+    boundary 수집 후 나머지 8개 데이터 소스를 ThreadPoolExecutor로 병렬 수집.
+    Why: 각 API 호출은 I/O 바운드(네트워크 대기)이므로 병렬화로 3~4배 단축.
+
     인구 데이터 우선순위:
       1. SGIS 격자 통계 (실인구 + 종사자수 + 인구통계) — SGIS_CONSUMER_KEY 설정 시
       2. 아파트 밀도 proxy (카카오 API) — 폴백
@@ -583,76 +586,118 @@ def collect_all(region: str, category: str = None, keyword: str = None,
          population, workplace, pop_source,
          land_use, buildings, roads}
     """
-    label = keyword if keyword else category
-    log.info(f"=== 데이터 자동 수집 시작: {region} / {label} ===")
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    label = keyword if keyword else category
+    log.info(f"=== 데이터 자동 수집 시작: {region} / {label} (병렬) ===")
+
+    # Step 0. boundary는 모든 작업의 선행 조건 — 순차 실행
     boundary = get_boundary(region)
 
-    if keyword:
-        competitor = get_competitors_by_keyword(keyword, boundary)
-    else:
-        competitor = get_competitors(category, boundary)
+    # ── 병렬 수집 태스크 정의 ──────────────────────────────
+    # Why: boundary만 있으면 나머지 8개 소스는 서로 독립적
+    def _task_competitor():
+        if keyword:
+            return get_competitors_by_keyword(keyword, boundary)
+        return get_competitors(category, boundary)
 
-    transport = get_transport(boundary)
-    parking   = get_parking(boundary)
-    diversity = get_commercial_diversity(boundary)
+    def _task_transport():
+        return get_transport(boundary)
 
-    # 인구·종사자: SGIS 우선, 실패 시 아파트 proxy 폴백
-    population = None
-    workplace  = None
-    pop_source = "none"
+    def _task_parking():
+        return get_parking(boundary)
 
-    from src.sgis_client import is_sgis_available
-    if is_sgis_available():
-        try:
-            from src.sgis_client import get_sgis_grid_data
-            sgis_data = get_sgis_grid_data(boundary, region=region,
-                                           cell_size_m=cell_size_m)
-            if sgis_data is not None:
-                population = sgis_data["population"]
-                workplace  = sgis_data["workplace"]
-                pop_source = "sgis"
-                log.info("인구 데이터: SGIS 격자 통계 사용")
-        except Exception as e:
-            log.warning(f"SGIS 수집 실패 → 아파트 proxy 폴백: {e}")
+    def _task_diversity():
+        return get_commercial_diversity(boundary)
 
-    if population is None:
-        population = get_population_proxy(boundary)
-        pop_source = "apartment_proxy" if population is not None else "none"
-        if population is not None:
+    def _task_population():
+        """인구·종사자: SGIS 우선, 실패 시 아파트 proxy 폴백."""
+        from src.sgis_client import is_sgis_available
+        if is_sgis_available():
+            try:
+                from src.sgis_client import get_sgis_grid_data
+                sgis_data = get_sgis_grid_data(boundary, region=region,
+                                               cell_size_m=cell_size_m)
+                if sgis_data is not None:
+                    log.info("인구 데이터: SGIS 격자 통계 사용")
+                    return sgis_data["population"], sgis_data["workplace"], "sgis"
+            except Exception as e:
+                log.warning(f"SGIS 수집 실패 → 아파트 proxy 폴백: {e}")
+        pop = get_population_proxy(boundary)
+        src = "apartment_proxy" if pop is not None else "none"
+        if pop is not None:
             log.info("인구 데이터: 아파트 proxy 사용 (SGIS 미설정 또는 실패)")
+        return pop, None, src
 
-    # ── 신규 데이터 소스 (v4.0+) ──────────────────────────
-    land_use  = None
-    buildings = None
-    roads     = None
-
-    # 용도지역 (Vworld API → OSM 폴백)
-    # Why: vworld_key 없어도 OSM landuse 폴백이 동작하므로 항상 시도
-    try:
-        from src.vworld_client import get_land_use_zones
-        land_use = get_land_use_zones(boundary, vworld_key or "")
-    except Exception as e:
-        log.warning(f"용도지역 수집 실패: {e}")
-
-    # 상가건물 (건축물대장 API)
-    # Why: KAKAO_API_KEY는 모듈 레벨 캐시로 None일 수 있으므로 런타임 조회
-    kakao_key_runtime = os.environ.get("KAKAO_API_KEY", "")
-    if building_key and kakao_key_runtime:
+    def _task_land_use():
         try:
-            from src.building_client import get_commercial_buildings
-            buildings = get_commercial_buildings(
-                region, boundary, building_key, kakao_key_runtime,
-            )
+            from src.vworld_client import get_land_use_zones
+            return get_land_use_zones(boundary, vworld_key or "")
         except Exception as e:
-            log.warning(f"상가건물 수집 실패: {e}")
+            log.warning(f"용도지역 수집 실패: {e}")
+            return None
 
-    # 도로 네트워크 (OSM)
-    try:
-        from src.building_client import get_road_network
-        roads = get_road_network(boundary)
-    except Exception as e:
-        log.warning(f"도로 네트워크 수집 실패: {e}")
+    def _task_buildings():
+        kakao_key_runtime = os.environ.get("KAKAO_API_KEY", "")
+        if building_key and kakao_key_runtime:
+            try:
+                from src.building_client import get_commercial_buildings
+                return get_commercial_buildings(
+                    region, boundary, building_key, kakao_key_runtime,
+                )
+            except Exception as e:
+                log.warning(f"상가건물 수집 실패: {e}")
+        return None
+
+    def _task_roads():
+        try:
+            from src.building_client import get_road_network
+            return get_road_network(boundary)
+        except Exception as e:
+            log.warning(f"도로 네트워크 수집 실패: {e}")
+            return None
+
+    # ── 병렬 실행 (max_workers=4: API rate limit 고려) ────
+    task_map = {
+        "competitor": _task_competitor,
+        "transport":  _task_transport,
+        "parking":    _task_parking,
+        "diversity":  _task_diversity,
+        "population": _task_population,
+        "land_use":   _task_land_use,
+        "buildings":  _task_buildings,
+        "roads":      _task_roads,
+    }
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(fn): key for key, fn in task_map.items()}
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                results[key] = future.result()
+                log.info(f"  ✓ {key} 수집 완료")
+            except Exception as e:
+                log.warning(f"  ✗ {key} 수집 실패: {e}")
+                results[key] = None
+
+    # ── 결과 추출 ─────────────────────────────────────────
+    def _gdf_or_empty(val):
+        return val if val is not None else gpd.GeoDataFrame()
+
+    competitor = _gdf_or_empty(results.get("competitor"))
+    transport  = _gdf_or_empty(results.get("transport"))
+    parking    = _gdf_or_empty(results.get("parking"))
+    diversity  = _gdf_or_empty(results.get("diversity"))
+    land_use   = results.get("land_use")
+    buildings  = results.get("buildings")
+    roads      = results.get("roads")
+
+    pop_result = results.get("population", (None, None, "none"))
+    if isinstance(pop_result, tuple) and len(pop_result) == 3:
+        population, workplace, pop_source = pop_result
+    else:
+        population, workplace, pop_source = None, None, "none"
 
     log.info(
         f"=== 수집 완료 === "

@@ -571,6 +571,7 @@ def build_combined_folium_map(
             _tip_extra += f"<br>소득수준: {row['income']:.0f}만/㎡"
         if "rent" in scored_gdf.columns and row.get("rent", 0) > 0:
             _tip_extra += f"<br>월세수준: {row['rent']:.0f}만원"
+        _grid_id = row.get("grid_id", "")
         folium.GeoJson(
             row["geometry"].__geo_interface__,
             style_function=lambda _, c=colormap(score): {
@@ -578,7 +579,7 @@ def build_combined_folium_map(
                 "weight": 0.3, "fillOpacity": 0.55,
             },
             tooltip=folium.Tooltip(
-                f"<b>입지 점수: {score:.3f}</b><br>"
+                f"<b>[{_grid_id}] 점수: {score:.3f}</b><br>"
                 f"인구: {row.get('population', 0):.0f}<br>"
                 f"경쟁업체: {row.get('competitor_cnt', 0):.0f}<br>"
                 f"교통: {row.get('transport_cnt', 0):.0f}"
@@ -714,6 +715,8 @@ def build_combined_folium_map(
 /* 기본지도(베이스레이어) + 구분선 숨김 */
 .leaflet-control-layers-base,
 .leaflet-control-layers-separator {{ display: none !important; }}
+/* attribution 숨김 */
+.leaflet-control-attribution {{ display: none !important; }}
 /* 패널 외관 */
 .leaflet-bottom.leaflet-left .leaflet-control-layers {{
     border-radius: 10px !important;

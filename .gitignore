@@ -10,6 +10,9 @@ build/
 .env
 *.env
 
+# Streamlit secrets
+.streamlit/secrets.toml
+
 # IDE
 .vscode/
 .idea/
