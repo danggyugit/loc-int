@@ -846,13 +846,13 @@ def build_combined_folium_map(
         cand_layer.add_to(m)
 
     # ── 레이어 7: 지하철 노선도 (OpenRailwayMap TileLayer) ──
-    # 기본 OFF — 사용자가 레이어 컨트롤에서 토글
+    # 기본 ON — 입지 분석 시 지하철 접근성이 핵심이라 처음부터 보여줌
     folium.TileLayer(
         tiles="https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png",
         attr='<a href="https://www.openrailwaymap.org/">OpenRailwayMap</a>',
         name=f"{_I_SUBWAY} 지하철 노선도",
         overlay=True,
-        show=False,
+        show=True,
         max_zoom=19,
         opacity=0.7,
     ).add_to(m)
