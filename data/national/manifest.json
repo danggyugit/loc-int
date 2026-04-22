@@ -90,8 +90,68 @@
       "available": [
         "11"
       ]
+    },
+    "subway_cnt": {
+      "label": "지하철역 수",
+      "unit": "개",
+      "source": "Kakao",
+      "cmap": "Blues",
+      "format": "{:,.0f}",
+      "available": [
+        "11"
+      ]
+    },
+    "bus_cnt": {
+      "label": "버스정류장 수",
+      "unit": "개",
+      "source": "Kakao",
+      "cmap": "Purples",
+      "format": "{:,.0f}",
+      "available": [
+        "11"
+      ]
+    },
+    "parking_cnt": {
+      "label": "주차장 수",
+      "unit": "개",
+      "source": "Kakao",
+      "cmap": "Greys",
+      "format": "{:,.0f}",
+      "available": [
+        "11"
+      ]
+    },
+    "diversity_cnt": {
+      "label": "상권 업종 수",
+      "unit": "개",
+      "source": "Kakao",
+      "cmap": "Reds",
+      "format": "{:,.0f}",
+      "available": [
+        "11"
+      ]
+    },
+    "income_avg": {
+      "label": "평균 소득(아파트 매매가)",
+      "unit": "만원/㎡",
+      "source": "data.go.kr",
+      "cmap": "Greens",
+      "format": "{:,.1f}",
+      "available": [
+        "11"
+      ]
+    },
+    "rent_avg": {
+      "label": "평균 월세",
+      "unit": "만원",
+      "source": "data.go.kr",
+      "cmap": "Oranges",
+      "format": "{:,.1f}",
+      "available": [
+        "11"
+      ]
     }
   },
-  "last_updated": "2026-04-23T02:22:17",
+  "last_updated": "2026-04-23T02:35:57",
   "notes": "available 배열에는 해당 지표가 채워진 시·도 코드를 적음. 비어 있으면 UI에 비활성화 표시."
 }
