@@ -52,8 +52,72 @@ python scripts/collect_sgis_national.py --resume
 
 ---
 
-## 추가 예정
+## 2) collect_kakao_general.py — 카카오 일반 인프라
 
-- `collect_kakao_general.py` — 지하철·버스·주차·전체업종 다양성
-- `collect_income_sigungu.py` — data.go.kr 시·군·구 평균 소득·월세
-- `collect_competitors_by_preset.py` — 7개 프리셋 업종별 전국 경쟁업체 수
+**필요 키**: KAKAO_API_KEY
+
+**수집 지표**: subway_cnt, bus_cnt, parking_cnt, diversity_cnt
+
+**시간/호출량**: 시·도당 약 1,000~6,000회 × 4지표 = 전국 약 30,000~50,000회 (일일 쿼터 10만 중 절반)
+
+```bash
+$env:KAKAO_API_KEY = "..."
+python scripts/collect_kakao_general.py                       # 전체
+python scripts/collect_kakao_general.py --metric subway       # 지하철만
+python scripts/collect_kakao_general.py --sido 11 --metric all
+python scripts/collect_kakao_general.py --resume              # 누락만
+```
+
+⚠️ SGIS 수집(`collect_sgis_national.py`)이 먼저 완료되어 있어야 함 (시·군·구 polygon 재사용).
+
+---
+
+## 3) collect_income_sigungu.py — 시·군·구 평균 소득·월세
+
+**필요 키**: DATA_GO_KR_API_KEY, KAKAO_API_KEY
+
+**수집 지표**: income_avg(아파트 평균 매매가, 만원/㎡), rent_avg(평균 월세, 만원)
+
+**시간**: 약 30분 (시·군·구당 2~3 호출 × 250개)
+
+**대상 단위**: 시·군·구만 (읍·면·동 단위 데이터 없음)
+
+```bash
+$env:DATA_GO_KR_API_KEY = "..."; $env:KAKAO_API_KEY = "..."
+python scripts/collect_income_sigungu.py
+python scripts/collect_income_sigungu.py --sido 11 --resume
+```
+
+---
+
+## 4) collect_competitors_by_preset.py — 업종별 전국 경쟁업체 수
+
+**필요 키**: KAKAO_API_KEY
+
+**수집 지표**: cafe_cnt, restaurant_cnt, hospital_cnt, convenience_cnt, mart_cnt, pharmacy_cnt, pottery_cnt
+
+**시간/호출량**: 시·도당 약 5,000~10,000회 × 7프리셋 = **전국 약 100,000~150,000회** ⚠️ 일일 쿼터 초과 가능
+
+→ **프리셋 단위로 며칠에 분할 실행 권장**.
+
+```bash
+$env:KAKAO_API_KEY = "..."
+# 1일차: 카페만
+python scripts/collect_competitors_by_preset.py --preset cafe
+# 2일차: 음식점
+python scripts/collect_competitors_by_preset.py --preset restaurant
+# ...
+python scripts/collect_competitors_by_preset.py --preset all  # 한 번에 (쿼터 충분 시)
+python scripts/collect_competitors_by_preset.py --preset cafe --sido 11  # 일부만
+```
+
+---
+
+## 권장 수집 순서
+
+1. **SGIS** (`collect_sgis_national.py`) — 인구·사업체 (~1시간, SGIS 키만)
+2. **카카오 일반** (`collect_kakao_general.py`) — 지표 4종 (~수 시간)
+3. **소득** (`collect_income_sigungu.py`) — 평균 소득·월세 (~30분)
+4. **업종별 경쟁업체** (`collect_competitors_by_preset.py`) — 7개 프리셋, 며칠에 분산
+
+각 단계 후 git commit·push → Streamlit Cloud 자동 반영. UI는 manifest.json을 읽어 가용 지표를 자동 노출하므로 코드 변경 불필요.
