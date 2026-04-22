@@ -37,7 +37,9 @@
       "source": "SGIS",
       "cmap": "YlOrRd",
       "format": "{:,.0f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     },
     "workplace": {
       "label": "종사자 수",
@@ -45,7 +47,9 @@
       "source": "SGIS",
       "cmap": "YlGnBu",
       "format": "{:,.0f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     },
     "corp_cnt": {
       "label": "사업체 수",
@@ -53,7 +57,9 @@
       "source": "SGIS",
       "cmap": "Purples",
       "format": "{:,.0f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     },
     "avg_age": {
       "label": "평균 연령",
@@ -61,7 +67,9 @@
       "source": "SGIS",
       "cmap": "RdYlBu_r",
       "format": "{:.1f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     },
     "juv_suprt_per": {
       "label": "유소년 부양비",
@@ -69,7 +77,9 @@
       "source": "SGIS",
       "cmap": "Greens",
       "format": "{:.1f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     },
     "oldage_suprt_per": {
       "label": "노년 부양비",
@@ -77,9 +87,11 @@
       "source": "SGIS",
       "cmap": "Oranges",
       "format": "{:.1f}",
-      "available": []
+      "available": [
+        "11"
+      ]
     }
   },
-  "last_updated": null,
+  "last_updated": "2026-04-23T02:22:17",
   "notes": "available 배열에는 해당 지표가 채워진 시·도 코드를 적음. 비어 있으면 UI에 비활성화 표시."
 }
