@@ -195,6 +195,15 @@ for _key, _default in [
 
 with st.sidebar:
     st.title("📍 입지 선정 분석")
+
+    # 모드 선택: 입지 분석(특정 구) vs 전국 탐색(사전수집 데이터)
+    app_mode = st.radio(
+        "모드",
+        ["🔍 입지 분석", "🗺️ 전국 탐색"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="app_mode",
+    )
     st.markdown("---")
 
     def _get_secret(key: str, default: str = "") -> str:
@@ -242,49 +251,199 @@ with st.sidebar:
             help="통계청 SGIS API 보안키",
         )
 
-    st.markdown("---")
-    st.subheader("분석 설정")
+    # 입지 분석 모드 입력
+    if app_mode == "🔍 입지 분석":
+        st.markdown("---")
+        st.subheader("분석 설정")
 
-    sido = st.selectbox("시/도", list(SIDO_GU_MAP.keys()))
-    gu_options = SIDO_GU_MAP[sido]
-    selected_gus = st.multiselect(
-        "구/군/시 (다중 선택 가능)",
-        options=gu_options,
-        help="여러 구를 선택하면 통합 분석을 수행합니다.",
-    )
-
-    mode = st.radio("업종 선택 방식", ["프리셋", "키워드 직접 입력"], horizontal=True)
-
-    if mode == "프리셋":
-        preset_label = st.selectbox("업종 프리셋", list(PRESETS.keys()))
-        preset  = PRESETS[preset_label]
-        keyword = None
-        label   = preset_label
-    else:
-        keyword = st.text_input(
-            "업종 키워드",
-            placeholder="예: 도자기 공방, 네일샵, 필라테스",
+        sido = st.selectbox("시/도", list(SIDO_GU_MAP.keys()))
+        gu_options = SIDO_GU_MAP[sido]
+        selected_gus = st.multiselect(
+            "구/군/시 (다중 선택 가능)",
+            options=gu_options,
+            help="여러 구를 선택하면 통합 분석을 수행합니다.",
         )
+
+        mode = st.radio("업종 선택 방식", ["프리셋", "키워드 직접 입력"], horizontal=True)
+
+        if mode == "프리셋":
+            preset_label = st.selectbox("업종 프리셋", list(PRESETS.keys()))
+            preset  = PRESETS[preset_label]
+            keyword = None
+            label   = preset_label
+        else:
+            keyword = st.text_input(
+                "업종 키워드",
+                placeholder="예: 도자기 공방, 네일샵, 필라테스",
+            )
+            preset = None
+            label  = keyword or ""
+
+        cell_size = st.select_slider(
+            "격자 셀 크기",
+            options=[250, 500, 1000, 2000],
+            value=500,
+            format_func=lambda x: f"{x}m",
+        )
+
+        top_n = st.slider("상위 후보지 수", min_value=5, max_value=20, value=10)
+
+        st.markdown("---")
+        run_btn = st.button("🔍 분석 시작", type="primary", use_container_width=True)
+    else:
+        # 전국 탐색 모드 입력
+        st.markdown("---")
+        st.subheader("전국 탐색 설정")
+        from src import national_data as _nd
+        _metrics = _nd.list_metrics(only_available=True)
+        if not _metrics:
+            st.warning("⚠️ 사전수집 데이터가 없습니다.\n\n"
+                       "터미널에서 아래 명령으로 데이터 수집:\n"
+                       "```\npython scripts/collect_sgis_national.py\n```")
+            nat_metric_key = None
+            nat_selected_sido = []
+            nat_level_choice = "auto"
+        else:
+            _metric_options = {m["key"]: f"{m['label']} ({m['source']})" for m in _metrics}
+            nat_metric_key = st.selectbox(
+                "지표",
+                options=list(_metric_options.keys()),
+                format_func=lambda k: _metric_options[k],
+            )
+            _avail_sido = _nd.list_available_sido()
+            _sido_labels = {code: name for code, name in _avail_sido}
+            nat_selected_sido = st.multiselect(
+                "시·도 (비우면 전국)",
+                options=list(_sido_labels.keys()),
+                format_func=lambda c: _sido_labels[c],
+                help=f"수집된 {len(_avail_sido)}개 시·도 중 선택",
+            )
+            nat_level_choice = st.radio(
+                "표시 단위",
+                ["auto", "sigungu", "eupmyeondong"],
+                format_func=lambda v: {"auto": "자동(줌별)", "sigungu": "시·군·구", "eupmyeondong": "읍·면·동"}[v],
+                horizontal=True,
+                help="자동: 줌 13 미만은 시·군·구, 13 이상은 읍·면·동",
+            )
+
+        # 입지 분석 모드 변수 기본값 (코드 호환)
+        sido = list(SIDO_GU_MAP.keys())[0]
+        selected_gus = []
+        mode = "프리셋"
         preset = None
-        label  = keyword or ""
-
-    cell_size = st.select_slider(
-        "격자 셀 크기",
-        options=[250, 500, 1000, 2000],
-        value=500,
-        format_func=lambda x: f"{x}m",
-    )
-
-    top_n = st.slider("상위 후보지 수", min_value=5, max_value=20, value=10)
-
-    st.markdown("---")
-    run_btn = st.button("🔍 분석 시작", type="primary", use_container_width=True)
+        keyword = None
+        label = ""
+        cell_size = 500
+        top_n = 10
+        run_btn = False
 
 # ─────────────────────────────────────────────────────────
 # 메인 화면
 # ─────────────────────────────────────────────────────────
 
 st.title("📍 입지 선정 분석 툴")
+
+# ─── 전국 탐색 모드 페이지 ────────────────────────────────
+if app_mode == "🗺️ 전국 탐색":
+    from src import national_data as _nd
+    st.caption("사전수집된 전국 인구·사업체·소득·교통 등을 시·군·구/읍·면·동 단위로 탐색합니다.")
+
+    summary = _nd.coverage_summary()
+    if not summary["ready"]:
+        st.warning(
+            "사전수집 데이터가 없습니다. 터미널에서 아래 명령으로 수집을 시작하세요:\n\n"
+            "```bash\n"
+            "# Windows PowerShell\n"
+            "$env:SGIS_CONSUMER_KEY=\"...\"; $env:SGIS_CONSUMER_SECRET=\"...\"\n"
+            "python scripts/collect_sgis_national.py\n"
+            "```\n\n"
+            "수집 완료 후 git commit·push 하면 Streamlit Cloud에 자동 반영됩니다."
+        )
+        st.stop()
+
+    # 상태 카드
+    _c1, _c2, _c3, _c4 = st.columns(4)
+    _c1.metric("수집 시·도", f"{len(_nd.list_available_sido())} / {summary['total_sido']}")
+    _c2.metric("활성 지표", f"{summary['metrics_active']} / {summary['metrics_total']}")
+    _c3.metric("최근 갱신", (summary["last_updated"] or "-")[:10])
+    _c4.metric("표시 단위",
+               {"auto": "자동", "sigungu": "시·군·구", "eupmyeondong": "읍·면·동"}[nat_level_choice])
+
+    if not nat_metric_key:
+        st.info("사이드바에서 지표를 선택하세요.")
+        st.stop()
+
+    meta = _nd.metric_meta(nat_metric_key)
+    st.markdown(f"### {meta['label']} ({meta['unit']}) · 출처 {meta['source']}")
+
+    # 데이터 로드 — 자동 모드는 시·군·구로 시작 (줌 변경은 v2에서 자동 전환)
+    _level = "sigungu" if nat_level_choice == "auto" else nat_level_choice
+    _gdf = _nd.load_level(nat_selected_sido, _level)
+    if _gdf is None or len(_gdf) == 0:
+        st.warning("선택한 시·도에 해당 단위 데이터가 없습니다.")
+        st.stop()
+
+    # folium choropleth
+    import folium
+    from streamlit_folium import st_folium
+    import branca.colormap as cm_branca
+
+    centroid = _gdf.unary_union.centroid
+    _zoom = 7 if nat_level_choice != "eupmyeondong" else 11
+
+    fmap = folium.Map(
+        location=[centroid.y, centroid.x],
+        zoom_start=_zoom,
+        tiles="cartodbpositron",
+    )
+
+    vals = _gdf[nat_metric_key].astype(float)
+    vmin, vmax = float(vals.min()), float(vals.max())
+    if vmin == vmax:
+        vmax = vmin + 1.0
+    cmap = cm_branca.linear.YlOrRd_09.scale(vmin, vmax)
+    cmap.caption = f"{meta['label']} ({meta['unit']})"
+
+    # 일반 GeoJson + style_function (Choropleth보다 유연)
+    def _style_fn(feature):
+        v = feature["properties"].get(nat_metric_key)
+        return {
+            "fillColor":   cmap(float(v)) if v is not None else "#cccccc",
+            "color":       "#888",
+            "weight":      0.4,
+            "fillOpacity": 0.72,
+        }
+
+    folium.GeoJson(
+        _gdf.to_json(),
+        style_function=_style_fn,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["adm_nm", nat_metric_key],
+            aliases=["행정구역", meta["label"]],
+            localize=True,
+            sticky=False,
+            labels=True,
+        ),
+    ).add_to(fmap)
+    cmap.add_to(fmap)
+
+    st_folium(fmap, height=620, use_container_width=True, returned_objects=[])
+
+    # 상위 10개 지역 카드
+    st.markdown("---")
+    st.subheader(f"🏅 {meta['label']} 상위 10개 지역")
+    _top = _gdf.nlargest(10, nat_metric_key)[["adm_nm", nat_metric_key]].reset_index(drop=True)
+    _top.index = _top.index + 1
+    _top.columns = ["행정구역", meta["label"]]
+    st.dataframe(_top, use_container_width=True)
+
+    st.caption(
+        f"총 {len(_gdf):,}개 {('읍·면·동' if _level == 'eupmyeondong' else '시·군·구')} | "
+        f"평균 {vals.mean():,.1f} | 최대 {vmax:,.1f} | 최소 {vmin:,.1f}"
+    )
+    st.stop()
+# ─── 전국 탐색 모드 페이지 끝 ─────────────────────────────
+
 st.caption("한국 전 지역을 대상으로 업종 프리셋·키워드 기반 입지 점수화를 11개 팩터로 수행합니다.")
 
 if not run_btn and st.session_state["analysis_cache"] is None:

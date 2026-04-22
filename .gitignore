@@ -27,8 +27,9 @@ presets/keyword_cache.json
 # Temp working dirs
 loc_int_temp/
 
-# Data (원본·가공 데이터 — 용량 큼)
-data/
+# Data (원본·가공 데이터 — 용량 큼). 단, data/national/은 commit
+data/raw/
+data/processed/
 
 # Temp files
 *.tmp

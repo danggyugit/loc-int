@@ -18,7 +18,11 @@
 | 시각화 | `src/visualizer_Ver4_2.py` | folium + matplotlib |
 | 데이터 수집 | `src/collector.py`, `src/rent_income_client.py`, `src/building_client.py`, `src/vworld_client.py`, `src/sgis_client.py`, `src/keyword_classifier.py` | 단일 버전 |
 | 분석 | `src/grid.py`, `src/cluster.py` | 단일 버전 |
-| 세션 격리 | `src/session_keys.py` | API 키를 threading.local에 저장하여 다중 사용자 세션 격리 (v4.9 신규) |
+| 세션 격리 | `src/session_keys.py` | API 키를 threading.local에 저장하여 다중 사용자 세션 격리 |
+| 역지오코딩 | `src/geocoding.py` | 격자 → 법정동/도로명 (병렬, 상위 100개) |
+| 전국 데이터 로더 | `src/national_data.py` | data/national/ parquet + manifest 캡슐화 |
+| 사전수집 스크립트 | `scripts/collect_*.py` | SGIS 인구·사업체 등 전국 데이터 일회성 크롤 — `scripts/README.md` 참고 |
+| 사전수집 결과 | `data/national/{sido}_{level}.parquet` + `manifest.json` | git commit 됨, Streamlit Cloud 배포 시 자동 반영 |
 | 구버전 | `src/_deprecated/` | scoring.py / scoring_Ver4_2.py / visualizer.py / visualizer_Ver4_1.py |
 | 전역 상수 | `config.py` | `PRESETS`, `SIDO_GU_MAP`, 좌표계, API URL 등 |
 

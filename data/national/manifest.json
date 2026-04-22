@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "description": "전국 사전수집 데이터 메타정보. UI는 이 파일을 읽어 사용 가능 지표를 자동 노출함.",
+  "levels": {
+    "sigungu": {
+      "filename_pattern": "{sido_code}_sigungu.parquet",
+      "description": "시·군·구 단위 (약 250개)"
+    },
+    "eupmyeondong": {
+      "filename_pattern": "{sido_code}_eupmyeondong.parquet",
+      "description": "읍·면·동 단위 (약 3,500개)"
+    }
+  },
+  "sido_codes": {
+    "11": "서울특별시",
+    "21": "부산광역시",
+    "22": "대구광역시",
+    "23": "인천광역시",
+    "24": "광주광역시",
+    "25": "대전광역시",
+    "26": "울산광역시",
+    "29": "세종특별자치시",
+    "31": "경기도",
+    "32": "강원특별자치도",
+    "33": "충청북도",
+    "34": "충청남도",
+    "35": "전북특별자치도",
+    "36": "전라남도",
+    "37": "경상북도",
+    "38": "경상남도",
+    "39": "제주특별자치도"
+  },
+  "metrics": {
+    "population": {
+      "label": "인구",
+      "unit": "명",
+      "source": "SGIS",
+      "cmap": "YlOrRd",
+      "format": "{:,.0f}",
+      "available": []
+    },
+    "workplace": {
+      "label": "종사자 수",
+      "unit": "명",
+      "source": "SGIS",
+      "cmap": "YlGnBu",
+      "format": "{:,.0f}",
+      "available": []
+    },
+    "corp_cnt": {
+      "label": "사업체 수",
+      "unit": "개",
+      "source": "SGIS",
+      "cmap": "Purples",
+      "format": "{:,.0f}",
+      "available": []
+    },
+    "avg_age": {
+      "label": "평균 연령",
+      "unit": "세",
+      "source": "SGIS",
+      "cmap": "RdYlBu_r",
+      "format": "{:.1f}",
+      "available": []
+    },
+    "juv_suprt_per": {
+      "label": "유소년 부양비",
+      "unit": "%",
+      "source": "SGIS",
+      "cmap": "Greens",
+      "format": "{:.1f}",
+      "available": []
+    },
+    "oldage_suprt_per": {
+      "label": "노년 부양비",
+      "unit": "%",
+      "source": "SGIS",
+      "cmap": "Oranges",
+      "format": "{:.1f}",
+      "available": []
+    }
+  },
+  "last_updated": null,
+  "notes": "available 배열에는 해당 지표가 채워진 시·도 코드를 적음. 비어 있으면 UI에 비활성화 표시."
+}
