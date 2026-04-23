@@ -383,6 +383,25 @@ if app_mode == "🗺️ 전국 탐색":
         st.warning("선택한 시·도에 해당 단위 데이터가 없습니다.")
         st.stop()
 
+    # 메트릭이 선택 단위에 없으면 시·군·구로 자동 fallback
+    # Why: 소득·월세는 data.go.kr이 시·군·구 단위만 제공해 읍·면·동 parquet엔
+    #      해당 컬럼이 없음. 사용자가 읍·면·동 선택 시 KeyError 방지.
+    if nat_metric_key not in _gdf.columns:
+        _gdf_fb = _nd.load_level(nat_selected_sido, "sigungu")
+        if _gdf_fb is not None and nat_metric_key in _gdf_fb.columns:
+            st.info(
+                f"💡 **{meta['label']}**는 시·군·구 단위만 제공됩니다 "
+                f"(출처 {meta['source']}의 데이터 한계). 시·군·구로 자동 전환합니다."
+            )
+            _gdf = _gdf_fb
+            _level = "sigungu"
+        else:
+            st.warning(
+                f"이 지표({meta['label']})는 선택한 시·도에서 사용할 수 없습니다. "
+                "다른 시·도 또는 다른 지표를 선택하세요."
+            )
+            st.stop()
+
     # folium choropleth
     import folium
     from streamlit_folium import st_folium
