@@ -342,8 +342,38 @@
         "38",
         "39"
       ]
+    },
+    "pottery_cnt": {
+      "label": "도자기 공방 매장 수",
+      "unit": "개",
+      "source": "Kakao (pottery)",
+      "cmap": "Reds",
+      "format": "{:,.0f}",
+      "available": [
+        "31"
+      ]
+    },
+    "cafe_cnt": {
+      "label": "카페 매장 수",
+      "unit": "개",
+      "source": "Kakao (cafe)",
+      "cmap": "Reds",
+      "format": "{:,.0f}",
+      "available": [
+        "31"
+      ]
+    },
+    "restaurant_cnt": {
+      "label": "음식점 매장 수",
+      "unit": "개",
+      "source": "Kakao (restaurant)",
+      "cmap": "Reds",
+      "format": "{:,.0f}",
+      "available": [
+        "31"
+      ]
     }
   },
-  "last_updated": "2026-04-23T15:09:47",
+  "last_updated": "2026-04-24T01:28:29",
   "notes": "available 배열에는 해당 지표가 채워진 시·도 코드를 적음. 비어 있으면 UI에 비활성화 표시."
 }

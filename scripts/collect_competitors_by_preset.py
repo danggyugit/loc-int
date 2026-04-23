@@ -127,7 +127,11 @@ def points_to_count(points: list[dict], gdf: gpd.GeoDataFrame) -> pd.Series:
     return counts.reindex(gdf["adm_cd"], fill_value=0).astype(int)
 
 
-def collect(preset: str, sido_code: str, hdr: dict, force: bool) -> bool:
+def collect(preset: str, sido_code: str, hdr: dict, force: bool, sgg_filter: str | None = None) -> bool:
+    """
+    sgg_filter: 시·군·구 이름 부분 매칭 (예: "고양시" → 덕양구·일산동구·일산서구).
+                None이면 시·도 전체.
+    """
     col = f"{preset}_cnt"
     sgg_path  = DATA_DIR / f"{sido_code}_sigungu.parquet"
     dong_path = DATA_DIR / f"{sido_code}_eupmyeondong.parquet"
@@ -137,12 +141,27 @@ def collect(preset: str, sido_code: str, hdr: dict, force: bool) -> bool:
 
     sgg_gdf = gpd.read_parquet(sgg_path)
     dong_gdf = gpd.read_parquet(dong_path)
-    if col in dong_gdf.columns and not force:
+
+    # 시·군·구 부분 매칭 필터
+    sgg_subset = sgg_gdf
+    dong_subset = dong_gdf
+    if sgg_filter:
+        sgg_subset = sgg_gdf[sgg_gdf["adm_nm"].str.contains(sgg_filter, na=False)].copy()
+        if len(sgg_subset) == 0:
+            log.warning(f"  ⏭ {sido_code} — '{sgg_filter}' 매칭되는 시·군·구 없음")
+            return False
+        # 해당 시·군·구의 sgg_cd 들에 속한 읍·면·동만
+        if "sgg_cd" in dong_gdf.columns:
+            dong_subset = dong_gdf[dong_gdf["sgg_cd"].isin(sgg_subset["adm_cd"])].copy()
+        log.info(f"     필터 '{sgg_filter}': {len(sgg_subset)}개 시·군·구, {len(dong_subset)}개 읍·면·동")
+
+    # 전체 컬럼 존재 여부 확인 (sgg 필터링 시엔 부분 갱신이라 force 무시 X)
+    if col in dong_gdf.columns and not force and not sgg_filter:
         log.info(f"  ⏭ {sido_code}/{preset} 이미 존재")
         return True
 
     kind, param = PRESET_SPEC[preset]
-    grid = make_search_grid(sgg_gdf, step_m=SEARCH_STEP_M)
+    grid = make_search_grid(sgg_subset, step_m=SEARCH_STEP_M)
     log.info(f"     격자 {len(grid)}개 — 카카오 호출 시작 ({kind}: {param})")
 
     pts = []
@@ -154,17 +173,31 @@ def collect(preset: str, sido_code: str, hdr: dict, force: bool) -> bool:
             log.info(f"     [{i}/{len(grid)}] 누적 {len(pts):,}건")
     log.info(f"     총 {len(pts):,}건 → 매칭 중")
 
-    dong_counts = points_to_count(pts, dong_gdf)
-    dong_gdf[col] = dong_counts.values
-    if "sgg_cd" in dong_gdf.columns:
-        sgg_counts = dong_gdf.groupby("sgg_cd")[col].sum()
-        sgg_gdf[col] = sgg_gdf["adm_cd"].map(sgg_counts).fillna(0).astype(int)
-    else:
+    # 새 컬럼이면 0으로 초기화 (다른 시·군·구는 미수집 = 0)
+    if col not in dong_gdf.columns:
+        dong_gdf[col] = 0
         sgg_gdf[col] = 0
+
+    # 필터 영역에만 카운트 갱신
+    dong_counts = points_to_count(pts, dong_subset)
+    for adm_cd, cnt in dong_counts.items():
+        mask = dong_gdf["adm_cd"] == adm_cd
+        dong_gdf.loc[mask, col] = int(cnt)
+
+    if "sgg_cd" in dong_gdf.columns:
+        # 갱신된 시·군·구만 재집계
+        for sgg_cd in sgg_subset["adm_cd"]:
+            sgg_total = int(dong_gdf[dong_gdf["sgg_cd"] == sgg_cd][col].sum())
+            sgg_gdf.loc[sgg_gdf["adm_cd"] == sgg_cd, col] = sgg_total
 
     sgg_gdf.to_parquet(sgg_path, index=False)
     dong_gdf.to_parquet(dong_path, index=False)
-    log.info(f"  ✅ {sido_code}/{preset} 저장: 시·도 합계 {int(sgg_gdf[col].sum()):,}")
+    scope = f"{sgg_filter} 영역" if sgg_filter else "시·도 전체"
+    if sgg_filter:
+        scope_total = int(sgg_gdf[sgg_gdf["adm_cd"].isin(sgg_subset["adm_cd"])][col].sum())
+    else:
+        scope_total = int(sgg_gdf[col].sum())
+    log.info(f"  ✅ {sido_code}/{preset} ({scope}) 저장: 합계 {scope_total:,}")
     return True
 
 
@@ -198,6 +231,7 @@ def main():
     ap.add_argument("--preset", choices=list(PRESET_SPEC.keys()) + ["all"], default="all",
                     help="수집할 프리셋 (기본 all)")
     ap.add_argument("--sido", help="특정 시·도만")
+    ap.add_argument("--sgg", help="시·군·구 이름 부분 매칭 (예: 고양시 → 덕양·일산동·일산서). --sido 와 함께 사용.")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
@@ -219,7 +253,7 @@ def main():
         for c in codes:
             log.info(f" 시·도 {c}")
             try:
-                if collect(preset, c, hdr, args.force):
+                if collect(preset, c, hdr, args.force, sgg_filter=args.sgg):
                     success.append(c)
             except KeyboardInterrupt:
                 log.warning("⚠ 중단")
