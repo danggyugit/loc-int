@@ -43,47 +43,111 @@ def setup_keys() -> None:
     session_keys.set_keys(DATA_GO_KR_API_KEY=dk, KAKAO_API_KEY=kk)
 
 
+_DONG_NUM_RE = __import__("re").compile(r"\d+(?=동$|가$|로$)")
+
+def _normalize_dong(adm_nm: str) -> str:
+    """SGIS 행정동 이름 → 법정동 비교용 정규화.
+    '서울특별시 강남구 역삼1동' → '역삼동' (마지막 토큰에서 숫자 제거).
+    """
+    last = adm_nm.split()[-1] if " " in adm_nm else adm_nm
+    return _DONG_NUM_RE.sub("", last)
+
+
 def collect_one_sido(sido_code: str, resume: bool) -> bool:
-    sgg_path = DATA_DIR / f"{sido_code}_sigungu.parquet"
+    sgg_path  = DATA_DIR / f"{sido_code}_sigungu.parquet"
+    dong_path = DATA_DIR / f"{sido_code}_eupmyeondong.parquet"
     if not sgg_path.exists():
         log.warning(f"  ⏭ {sido_code} — SGIS 데이터 없음")
         return False
 
-    sgg_gdf = gpd.read_parquet(sgg_path)
-    if resume and INCOME_COL in sgg_gdf.columns and RENT_COL in sgg_gdf.columns:
-        log.info(f"  ⏭ {sido_code} — 이미 수집됨")
+    sgg_gdf  = gpd.read_parquet(sgg_path)
+    dong_gdf = gpd.read_parquet(dong_path) if dong_path.exists() else None
+
+    if resume and INCOME_COL in sgg_gdf.columns and RENT_COL in sgg_gdf.columns \
+       and dong_gdf is not None and INCOME_COL in dong_gdf.columns:
+        log.info(f"  ⏭ {sido_code} — 이미 수집됨 (시·군·구 + 읍·면·동)")
         return True
 
     from src.rent_income_client import get_income_data, get_rent_data
 
-    incomes, rents = [], []
+    sgg_incomes, sgg_rents = [], []
+    # 동 단위 누적: {sgg_cd: {dong_normalized: avg_value}}
+    dong_income_map: dict[str, dict[str, float]] = {}
+    dong_rent_map:   dict[str, dict[str, float]] = {}
+
     n = len(sgg_gdf)
     for i, (_, row) in enumerate(sgg_gdf.iterrows(), 1):
+        sgg_cd = row["adm_cd"]
         single = gpd.GeoDataFrame([row], geometry="geometry", crs=sgg_gdf.crs)
-        # 소득 (아파트 평균 매매가)
+
+        # 소득 (아파트 평균 매매가) — 법정동별 GDF 받음
         try:
-            inc = get_income_data(single, region=row["adm_nm"])
-            v = float(inc["avg_price"].mean()) if inc is not None and len(inc) else 0.0
+            inc_gdf = get_income_data(single, region=row["adm_nm"])
+            if inc_gdf is not None and len(inc_gdf) > 0:
+                sgg_avg = float(inc_gdf["avg_price"].mean())
+                # 동별 평균 누적 (data.go.kr이 같은 동에 여러 행 줄 수 있음)
+                dong_income_map[sgg_cd] = dict(
+                    inc_gdf.groupby("dong")["avg_price"].mean()
+                )
+            else:
+                sgg_avg = 0.0
         except Exception as e:
             log.debug(f"income 실패 {row['adm_nm']}: {e}")
-            v = 0.0
-        incomes.append(v)
+            sgg_avg = 0.0
+        sgg_incomes.append(sgg_avg)
+
         # 월세
         try:
-            rent = get_rent_data(single, region=row["adm_nm"])
-            r = float(rent["monthly_rent"].mean()) if rent is not None and len(rent) else 0.0
+            rent_gdf = get_rent_data(single, region=row["adm_nm"])
+            if rent_gdf is not None and len(rent_gdf) > 0:
+                sgg_rent = float(rent_gdf["monthly_rent"].mean())
+                dong_rent_map[sgg_cd] = dict(
+                    rent_gdf.groupby("dong")["monthly_rent"].mean()
+                )
+            else:
+                sgg_rent = 0.0
         except Exception as e:
             log.debug(f"rent 실패 {row['adm_nm']}: {e}")
-            r = 0.0
-        rents.append(r)
-        log.info(f"     [{i}/{n}] {row['adm_nm']} — 소득 {v:.0f} / 월세 {r:.1f}")
+            sgg_rent = 0.0
+        sgg_rents.append(sgg_rent)
 
-    sgg_gdf[INCOME_COL] = incomes
-    sgg_gdf[RENT_COL]   = rents
+        n_dong_inc = len(dong_income_map.get(sgg_cd, {}))
+        log.info(f"     [{i}/{n}] {row['adm_nm']} — 소득 {sgg_avg:.0f}/{n_dong_inc}동 / 월세 {sgg_rent:.1f}")
+
+    # 시·군·구 parquet 갱신
+    sgg_gdf[INCOME_COL] = sgg_incomes
+    sgg_gdf[RENT_COL]   = sgg_rents
     sgg_gdf.to_parquet(sgg_path, index=False)
-    n_ok_inc = sum(1 for v in incomes if v > 0)
-    n_ok_rent = sum(1 for v in rents if v > 0)
-    log.info(f"  ✅ {sido_code} 저장: 소득 데이터 있는 시·군·구 {n_ok_inc}/{n}, 월세 {n_ok_rent}/{n}")
+
+    # 읍·면·동 parquet 갱신 (법정동 → 행정동 broadcast)
+    # Why: SGIS는 행정동(역삼1동/역삼2동), data.go.kr은 법정동(역삼동) 단위.
+    #      같은 법정동의 모든 행정동에 같은 값 부여(broadcast).
+    if dong_gdf is not None:
+        if INCOME_COL not in dong_gdf.columns:
+            dong_gdf[INCOME_COL] = 0.0
+        if RENT_COL not in dong_gdf.columns:
+            dong_gdf[RENT_COL] = 0.0
+
+        n_dong_inc_total = 0
+        n_dong_rent_total = 0
+        for idx, row in dong_gdf.iterrows():
+            sgg_cd = row.get("sgg_cd")
+            if not sgg_cd:
+                continue
+            norm = _normalize_dong(row["adm_nm"])
+            if sgg_cd in dong_income_map and norm in dong_income_map[sgg_cd]:
+                dong_gdf.at[idx, INCOME_COL] = float(dong_income_map[sgg_cd][norm])
+                n_dong_inc_total += 1
+            if sgg_cd in dong_rent_map and norm in dong_rent_map[sgg_cd]:
+                dong_gdf.at[idx, RENT_COL] = float(dong_rent_map[sgg_cd][norm])
+                n_dong_rent_total += 1
+
+        dong_gdf.to_parquet(dong_path, index=False)
+        log.info(f"  ✅ {sido_code} 읍·면·동 매핑: 소득 {n_dong_inc_total}/{len(dong_gdf)}, 월세 {n_dong_rent_total}/{len(dong_gdf)}")
+
+    n_ok_inc = sum(1 for v in sgg_incomes if v > 0)
+    n_ok_rent = sum(1 for v in sgg_rents if v > 0)
+    log.info(f"  ✅ {sido_code} 시·군·구: 소득 {n_ok_inc}/{n}, 월세 {n_ok_rent}/{n}")
     return True
 
 
