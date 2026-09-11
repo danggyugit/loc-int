@@ -89,7 +89,7 @@ except ImportError:
 def _cached_collect_all(
     region: str, category: str, keyword: str,
     cell_size_m: int, vworld_key: str, building_key: str,
-    _kakao_key: str,
+    _kakao_key: str, _progress_cb=None,
 ) -> dict:
     """collect_all 결과를 캐싱. GeoDataFrame은 dict로 변환하여 직렬화."""
     from src.collector import collect_all
@@ -97,6 +97,7 @@ def _cached_collect_all(
         region=region, category=category, keyword=keyword,
         cell_size_m=cell_size_m,
         vworld_key=vworld_key, building_key=building_key,
+        progress_cb=_progress_cb,
     )
     # GeoDataFrame → dict 변환 (st.cache_data 직렬화 호환)
     import geopandas as gpd
@@ -195,6 +196,7 @@ for _key, _default in [
 
 with st.sidebar:
     st.title("📍 입지 선정 분석")
+    st.caption("build v5.2.1 · 2026-09-12")
 
     # 모드 선택: 입지 분석(특정 구) vs 전국 탐색(사전수집 데이터)
     app_mode = st.radio(
@@ -653,6 +655,7 @@ if run_btn:
                     cell_size_m=cell_size,
                     vworld_key=vworld_key, building_key=building_key,
                     _kakao_key=kakao_key,
+                    _progress_cb=lambda m: st.write(f"    {m}"),
                 )
                 boundaries.append(_json_to_gdf(cached["boundary"]))
                 competitors.append(_json_to_gdf(cached["competitor"]))

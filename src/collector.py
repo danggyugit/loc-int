@@ -595,7 +595,8 @@ def get_competitors_by_keyword(keyword: str, boundary_gdf: gpd.GeoDataFrame) -> 
 
 def collect_all(region: str, category: str = None, keyword: str = None,
                 cell_size_m: int = 500,
-                vworld_key: str = None, building_key: str = None) -> dict:
+                vworld_key: str = None, building_key: str = None,
+                progress_cb=None) -> dict:
     """
     지역명 + 업종(또는 키워드)으로 분석에 필요한 모든 데이터를 자동 수집.
 
@@ -624,8 +625,17 @@ def collect_all(region: str, category: str = None, keyword: str = None,
     label = keyword if keyword else category
     log.info(f"=== 데이터 자동 수집 시작: {region} / {label} (병렬) ===")
 
+    def _notify(msg: str) -> None:
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:  # noqa: BLE001 — 진행 표시 실패가 수집을 막으면 안 됨
+                pass
+
     # Step 0. boundary는 모든 작업의 선행 조건 — 순차 실행
+    _notify("행정경계 조회 (OSM, 최대 30초)")
     boundary = get_boundary(region)
+    _notify("행정경계 확보 → 8종 데이터 병렬 수집 시작")
 
     # ── 병렬 수집 태스크 정의 ──────────────────────────────
     # Why: boundary만 있으면 나머지 8개 소스는 서로 독립적
@@ -710,17 +720,41 @@ def collect_all(region: str, category: str = None, keyword: str = None,
         "roads":      _task_roads,
     }
 
+    # Why: with 블록(shutdown wait=True)은 한 태스크만 매달려도 전체를 무한
+    #      대기시킴 → 태스크별 완료를 300초 전체 데드라인 안에서 수확하고,
+    #      초과분은 버린 채 진행한다 (daemon 아님이지만 결과만 포기).
+    _TASK_LABELS = {
+        "competitor": "경쟁업체", "transport": "교통", "parking": "주차장",
+        "diversity": "상권 다양성", "population": "인구·직장", "land_use": "용도지역",
+        "buildings": "상가건물", "roads": "도로망",
+    }
     results = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(_run_with_keys, fn): key for key, fn in task_map.items()}
-        for future in as_completed(futures):
+    executor = ThreadPoolExecutor(max_workers=4)
+    futures = {executor.submit(_run_with_keys, fn): key for key, fn in task_map.items()}
+    try:
+        for future in as_completed(futures, timeout=300):
             key = futures[future]
             try:
                 results[key] = future.result()
                 log.info(f"  ✓ {key} 수집 완료")
+                _notify(f"✓ {_TASK_LABELS.get(key, key)} 완료")
             except Exception as e:
                 log.warning(f"  ✗ {key} 수집 실패: {e}")
+                _notify(f"✗ {_TASK_LABELS.get(key, key)} 실패 — 해당 팩터 제외")
                 results[key] = None
+    except TimeoutError:
+        pending = [k for f, k in futures.items() if not f.done()]
+        log.warning(f"수집 전체 데드라인(300초) 초과 — 미완료 태스크 제외: {pending}")
+        _notify(
+            "⏱️ 일부 수집이 300초를 초과해 제외하고 진행: "
+            + ", ".join(_TASK_LABELS.get(k, k) for k in pending)
+        )
+        for f, k in futures.items():
+            if not f.done():
+                f.cancel()
+                results.setdefault(k, None)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # ── 결과 추출 ─────────────────────────────────────────
     def _gdf_or_empty(val):

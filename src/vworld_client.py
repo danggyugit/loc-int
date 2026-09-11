@@ -289,8 +289,15 @@ def _get_osm_landuse(
             continue
 
     if data is None:
-        log.warning("Overpass 직접 호출 실패 → osmnx 폴백 시도")
-        return _get_osm_landuse_via_osmnx(boundary_gdf)
+        log.warning("Overpass 직접 호출 실패 → osmnx 폴백 시도 (최대 60초)")
+        try:
+            from src.collector import _run_with_deadline
+            return _run_with_deadline(
+                lambda: _get_osm_landuse_via_osmnx(boundary_gdf), 60
+            )
+        except Exception as e:
+            log.warning(f"osmnx 폴백 실패/지연 ({type(e).__name__}) → 용도지역 없이 진행")
+            return None
 
     elements = data.get("elements", [])
     if not elements:
