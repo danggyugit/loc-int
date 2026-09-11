@@ -37,7 +37,7 @@ def _grid_center(gdf: gpd.GeoDataFrame) -> tuple[float, float]:
 
 def _score_to_color(score: float, cmap_name: str = "RdYlGn") -> str:
     """점수(0~1)를 hex 색상으로 변환."""
-    cmap = cm.get_cmap(cmap_name)
+    cmap = matplotlib.colormaps[cmap_name]  # mpl 3.9+: cm.get_cmap 제거됨
     rgba = cmap(float(score))
     return mcolors.to_hex(rgba)
 
@@ -417,7 +417,7 @@ def plot_cluster_map(
 
     # 레이블별 색상 맵 (-1 = 노이즈 → 회색)
     labels  = cluster_gdf[label_col].unique()
-    palette = plt.cm.get_cmap("tab20", max(len(labels), 1))
+    palette = matplotlib.colormaps["tab20"].resampled(max(len(labels), 1))  # mpl 3.9+ 호환
     color_map = {
         label: ("gray" if label == -1 else mcolors.to_hex(palette(i)))
         for i, label in enumerate(sorted(labels))

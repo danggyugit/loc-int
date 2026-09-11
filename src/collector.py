@@ -34,6 +34,32 @@ KAKAO_TRANSPORT_CATEGORY = {
 # 1. 행정경계 자동 수집 (OpenStreetMap)
 # ─────────────────────────────────────────────────────────
 
+def _run_with_deadline(fn, seconds: float):
+    """fn을 daemon thread에서 실행하고 데드라인 초과 시 TimeoutError.
+
+    Why: ThreadPoolExecutor는 hung thread가 interpreter 종료를 막는다(atexit join).
+    daemon thread면 초과된 호출을 버리고 프로세스가 정상 종료·진행할 수 있다.
+    """
+    import threading
+
+    box: dict = {}
+
+    def _target():
+        try:
+            box["value"] = fn()
+        except Exception as e:  # noqa: BLE001 — 호출부에서 그대로 재발생
+            box["error"] = e
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(seconds)
+    if t.is_alive():
+        raise TimeoutError(f"외부 호출이 {seconds}초 데드라인을 초과했습니다")
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
 def get_boundary(region: str) -> gpd.GeoDataFrame:
     """
     지역명으로 행정경계 폴리곤 자동 수집 (OpenStreetMap 기반).
@@ -44,10 +70,16 @@ def get_boundary(region: str) -> gpd.GeoDataFrame:
     Returns:
         행정경계 GeoDataFrame (EPSG:4326)
     """
+    # Why: Nominatim이 느리거나 클라우드 IP를 제한하면 osmnx 기본 timeout(180s)
+    #      동안 UI가 "Step 1"에서 멈춘 것처럼 보임 → 30초 하드 데드라인 후
+    #      카카오 bbox로 즉시 폴백한다.
     try:
         import osmnx as ox
-        log.info(f"행정경계 수집 중: {region} (OpenStreetMap)")
-        gdf = ox.geocode_to_gdf(f"{region}, 대한민국")
+        ox.settings.requests_timeout = 20
+        log.info(f"행정경계 수집 중: {region} (OpenStreetMap, 최대 30초)")
+        gdf = _run_with_deadline(
+            lambda: ox.geocode_to_gdf(f"{region}, 대한민국"), 30
+        )
         gdf = gdf[["geometry"]].copy()
         gdf["adm_name"] = region
         gdf["adm_code"] = "auto"
@@ -55,7 +87,7 @@ def get_boundary(region: str) -> gpd.GeoDataFrame:
         log.info(f"행정경계 수집 완료: {region}")
         return gdf
     except Exception as e:
-        log.warning(f"OSM 수집 실패 ({e}) → 카카오 좌표 기반 bbox 사용")
+        log.warning(f"OSM 수집 실패/지연 ({type(e).__name__}: {e}) → 카카오 좌표 기반 bbox 사용")
         return _get_boundary_bbox(region)
 
 

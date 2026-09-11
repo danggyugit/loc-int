@@ -363,12 +363,19 @@ def get_road_network(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame | None:
 
     boundary_union = boundary_gdf.to_crs(CRS_WGS84).unary_union
 
+    # Why: Overpass가 지연/제한되면 기본 180s+재시도 동안 분석 전체가 멈춘 듯
+    #      보임 → 120초 하드 데드라인 후 도로 팩터만 건너뛴다 (score에서 자동 제외).
     try:
-        log.info("OSM 도로 네트워크 조회 시작")
-        G = ox.graph_from_polygon(boundary_union, network_type="drive")
+        from src.collector import _run_with_deadline
+
+        ox.settings.requests_timeout = 60
+        log.info("OSM 도로 네트워크 조회 시작 (최대 120초)")
+        G = _run_with_deadline(
+            lambda: ox.graph_from_polygon(boundary_union, network_type="drive"), 120
+        )
         edges = ox.graph_to_gdfs(G, nodes=False)
     except Exception as e:
-        log.warning(f"OSM 도로 조회 실패: {e}")
+        log.warning(f"OSM 도로 조회 실패/지연 ({type(e).__name__}: {e}) → 도로 팩터 제외")
         return None
 
     if edges.empty:
