@@ -1320,7 +1320,30 @@ if not cache.get("_demo"):
             "배포 앱에서 방문자가 **API 키 없이** 이 결과를 체험할 수 있습니다. "
             "Streamlit Cloud에서 저장한 파일은 재부팅 시 사라지므로 **로컬 실행에서 저장**하세요."
         )
-        if st.button("💾 데모 번들 저장", use_container_width=False):
-            from src import demo_bundle as _demo_save
-            _dir = _demo_save.save_demo_bundle(cache)
-            st.success(f"저장 완료: `{_dir}` — git add data/demo && commit 후 push하면 배포에 반영됩니다.")
+        _b1, _b2 = st.columns(2)
+        with _b1:
+            if st.button("💾 데모 번들 저장 (로컬 실행 시)", use_container_width=True):
+                from src import demo_bundle as _demo_save
+                _dir = _demo_save.save_demo_bundle(cache)
+                st.success(f"저장 완료: `{_dir}` — git add data/demo && commit 후 push하면 배포에 반영됩니다.")
+        with _b2:
+            # 클라우드에서 분석한 경우: zip으로 받아 repo에 넣는 경로
+            from src import demo_bundle as _demo_zip
+
+            @st.cache_data(show_spinner="번들 압축 중...")
+            def _cached_zip(region_k: str, label_k: str, n_rows: int) -> bytes:
+                """expander는 접혀 있어도 매 rerun 실행되므로 zip 직렬화를 캐시."""
+                return _demo_zip.bundle_to_zip_bytes(cache)
+
+            st.download_button(
+                "📦 데모 번들 zip 다운로드 (클라우드 실행 시)",
+                data=_cached_zip(
+                    str(cache.get("region", "")), str(cache.get("label", "")),
+                    len(cache.get("scored", [])),
+                ),
+                file_name="demo_bundle.zip",
+                mime="application/zip",
+                use_container_width=True,
+                help="zip 내용물을 repo의 data/demo/ 에 풀고 commit·push하면 "
+                     "방문자가 API 키 없이 이 결과를 체험할 수 있습니다",
+            )

@@ -42,13 +42,18 @@ def demo_meta() -> dict:
         return {}
 
 
-def save_demo_bundle(cache: dict) -> Path:
+def save_demo_bundle(cache: dict, dest_dir: Path | None = None) -> Path:
     """analysis_cache를 데모 번들로 저장한다.
+
+    Args:
+        cache: analysis_cache dict.
+        dest_dir: 저장 위치 (기본 data/demo/). zip export 시 임시 폴더 지정용.
 
     Returns:
         번들 디렉토리 경로.
     """
-    DEMO_DIR.mkdir(parents=True, exist_ok=True)
+    dest = Path(dest_dir) if dest_dir else DEMO_DIR
+    dest.mkdir(parents=True, exist_ok=True)
     bundle = dict(cache)  # 원본 세션 캐시를 건드리지 않도록 얕은 복사
 
     # 차트/CSV 파일을 번들 폴더로 복사하고 파일명만 저장
@@ -58,7 +63,7 @@ def save_demo_bundle(cache: dict) -> Path:
             continue
         src_path = Path(src)
         if src_path.exists():
-            dst = DEMO_DIR / src_path.name
+            dst = dest / src_path.name
             if src_path.resolve() != dst.resolve():
                 shutil.copy2(src_path, dst)
             bundle[key] = src_path.name  # 번들 기준 상대 경로
@@ -66,7 +71,7 @@ def save_demo_bundle(cache: dict) -> Path:
             bundle[key] = None
 
     bundle["_demo"] = True
-    with open(DEMO_DIR / _PKL, "wb") as f:
+    with open(dest / _PKL, "wb") as f:
         pickle.dump(bundle, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     meta = {
@@ -75,11 +80,30 @@ def save_demo_bundle(cache: dict) -> Path:
         "top_n": cache.get("top_n"),
         "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
-    (DEMO_DIR / _META).write_text(
+    (dest / _META).write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    log.info("데모 번들 저장: %s (%s / %s)", DEMO_DIR, meta["region"], meta["label"])
-    return DEMO_DIR
+    log.info("데모 번들 저장: %s (%s / %s)", dest, meta["region"], meta["label"])
+    return dest
+
+
+def bundle_to_zip_bytes(cache: dict) -> bytes:
+    """분석 결과를 데모 번들 zip으로 직렬화해 bytes로 반환한다.
+
+    용도: Streamlit Cloud처럼 디스크가 휘발성인 환경에서 분석한 결과를
+    다운로드 → repo의 data/demo/에 풀어 commit하면 배포 데모가 된다.
+    """
+    import io
+    import tempfile
+    import zipfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle_dir = save_demo_bundle(cache, dest_dir=Path(tmp) / "demo")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in sorted(bundle_dir.iterdir()):
+                zf.write(f, arcname=f.name)
+        return buf.getvalue()
 
 
 def load_demo_bundle() -> dict | None:
