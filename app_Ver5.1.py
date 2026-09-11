@@ -433,7 +433,7 @@ if app_mode == "🗺️ 전국 탐색":
     fmap = folium.Map(
         location=[centroid.y, centroid.x],
         zoom_start=_zoom,
-        tiles="cartodbpositron",
+        tiles="OpenStreetMap",
     )
 
     vals = _gdf[nat_metric_key].astype(float)

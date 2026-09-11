@@ -1,6 +1,18 @@
 # 📍 Location Intelligence — 데이터 기반 입지 선정 분석 툴
 
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-Cloud%20deployed-FF4B4B?logo=streamlit&logoColor=white)
+![GeoPandas](https://img.shields.io/badge/GIS-GeoPandas%20%7C%20folium-139C5A)
+![APIs](https://img.shields.io/badge/API-%EC%B9%B4%EC%B9%B4%EC%98%A4%20%7C%20SGIS%20%7C%20data.go.kr%20%7C%20Vworld-blue)
+[![App](https://img.shields.io/badge/Live%20Demo-locint51.streamlit.app-brightgreen)](https://locint51.streamlit.app/)
+
 > "감으로 정하던 창업 입지를, **11개 공간 팩터의 점수 모델**로 객관화한다."
+
+## 📸 화면
+
+| 전국 탐색 — 인구·사업체·소득 choropleth (API 키 불필요) | 입지 분석 — 11팩터 점수화 랜딩 |
+|---|---|
+| ![전국 탐색](docs/screenshots/national.png) | ![랜딩](docs/screenshots/landing.png) |
 
 소상공인·사업 기획자가 최적 입지를 데이터로 선정하도록 돕는 Streamlit 앱입니다.
 전국을 250m~2km 격자로 나누고, 공공·상용 API에서 수집한 데이터를 업종별 가중치로

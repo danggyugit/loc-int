@@ -69,7 +69,7 @@ def plot_grid_heatmap(
     out_path = out_path or str(OUTPUT_DIR / "map_heatmap.html")
     center   = _grid_center(grid_gdf)
 
-    m = folium.Map(location=center, zoom_start=12, tiles="CartoDB positron")
+    m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
 
     # 범례용 colormap
     colormap = folium.LinearColormap(
@@ -128,7 +128,7 @@ def plot_buffer_map(
         저장된 파일 경로
     """
     out_path = out_path or str(OUTPUT_DIR / "map_buffer.html")
-    m = folium.Map(location=[lat, lng], zoom_start=15, tiles="CartoDB positron")
+    m = folium.Map(location=[lat, lng], zoom_start=15, tiles="OpenStreetMap")
 
     # 중심점 마커
     folium.Marker(
@@ -413,7 +413,7 @@ def plot_cluster_map(
     out_path = out_path or str(OUTPUT_DIR / "map_cluster.html")
     center   = _grid_center(cluster_gdf)
 
-    m = folium.Map(location=center, zoom_start=12, tiles="CartoDB positron")
+    m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
 
     # 레이블별 색상 맵 (-1 = 노이즈 → 회색)
     labels  = cluster_gdf[label_col].unique()
@@ -472,7 +472,7 @@ def plot_combined_map(
     out_path = out_path or str(OUTPUT_DIR / "map_combined.html")
     center   = _grid_center(scored_gdf)
 
-    m = folium.Map(location=center, zoom_start=13, tiles="CartoDB positron")
+    m = folium.Map(location=center, zoom_start=13, tiles="OpenStreetMap")
 
     # ── 레이어 1: 입지 점수 히트맵 ──────────────────────
     score_col  = "score"
@@ -672,7 +672,7 @@ def build_combined_folium_map(
     if center is None:
         center = _grid_center(scored_gdf)
 
-    m = folium.Map(location=center, zoom_start=zoom_start, tiles="CartoDB positron")
+    m = folium.Map(location=center, zoom_start=zoom_start, tiles="OpenStreetMap")
 
     # ── 범례 아이콘 HTML (Leaflet이 name을 innerHTML로 렌더링) ──
     _I_HEAT = (
