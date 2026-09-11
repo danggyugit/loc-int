@@ -60,6 +60,42 @@ def _run_with_deadline(fn, seconds: float):
     return box["value"]
 
 
+def _boundary_from_national(region: str) -> gpd.GeoDataFrame | None:
+    """사전수집 전국 시·군·구 경계에서 region을 찾아 반환한다. 없으면 None.
+
+    region은 "서울특별시 강남구"(광역시) 또는 "일산동구"(도 지역 축약) 형식 —
+    adm_nm("경기도 고양시 일산동구") suffix 매칭으로 둘 다 커버한다.
+    """
+    try:
+        from src import national_data
+
+        target = region.strip()
+        if not target:
+            return None
+        for code, _sido_name in national_data.list_available_sido():
+            gdf = national_data.load_level([code], "sigungu")
+            if gdf is None or "adm_nm" not in gdf.columns:
+                continue
+            names = gdf["adm_nm"].astype(str).str.strip()
+            # 세종특례: region "세종특별자치시" ↔ adm_nm "세종특별자치시 세종시"
+            hit = gdf[(names == target) | names.str.endswith(" " + target)
+                      | (names == target + " 세종시")]
+            if len(hit) == 0:
+                continue
+            if len(hit) > 1:
+                log.warning(
+                    f"전국 경계 다중 매칭({region}): {list(hit['adm_nm'])} → 첫 번째 사용"
+                )
+            row = hit.iloc[[0]]
+            out = row[["geometry"]].copy()
+            out["adm_name"] = row.iloc[0]["adm_nm"]
+            out["adm_code"] = "national"
+            return out.to_crs(CRS_WGS84).reset_index(drop=True)
+    except Exception as e:  # noqa: BLE001 — 경계 조회 실패는 다음 순위로 폴백
+        log.warning(f"전국 경계 조회 실패 → OSM/bbox 폴백: {e}")
+    return None
+
+
 def get_boundary(region: str) -> gpd.GeoDataFrame:
     """
     지역명으로 행정경계 폴리곤 자동 수집 (OpenStreetMap 기반).
@@ -70,9 +106,16 @@ def get_boundary(region: str) -> gpd.GeoDataFrame:
     Returns:
         행정경계 GeoDataFrame (EPSG:4326)
     """
-    # Why: Nominatim이 느리거나 클라우드 IP를 제한하면 osmnx 기본 timeout(180s)
-    #      동안 UI가 "Step 1"에서 멈춘 것처럼 보임 → 30초 하드 데드라인 후
-    #      카카오 bbox로 즉시 폴백한다.
+    # 1순위: 사전수집 전국 행정경계 (data/national) — 외부 API 불필요.
+    # Why: Streamlit Cloud에서 Nominatim/Overpass가 차단되는 것이 로그로 확인됨.
+    #      로컬 parquet 매칭이 가장 빠르고 정확하다 (bbox 폴백은 실제 구보다
+    #      훨씬 넓은 사각형이라 분석 품질이 떨어짐).
+    nat = _boundary_from_national(region)
+    if nat is not None:
+        log.info(f"행정경계: 사전수집 데이터 사용 ({nat.iloc[0]['adm_name']})")
+        return nat
+
+    # 2순위: OSM Nominatim (30초 데드라인) → 3순위: 카카오 bbox
     try:
         import osmnx as ox
         ox.settings.requests_timeout = 20
