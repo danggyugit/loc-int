@@ -213,43 +213,63 @@ with st.sidebar:
         except (KeyError, FileNotFoundError):
             return os.environ.get(key, default)
 
+    def _key_field(label: str, secret_name: str, help_txt: str) -> str:
+        """API 키 입력 필드.
+
+        보안 원칙: Secrets에 구성된 운영자 키는 **화면에 절대 싣지 않는다**.
+        (기존처럼 value=secret으로 채우면 password 필드여도 👁 토글로
+        방문자에게 평문 노출됨.) 구성 여부 표시만 하고 값은 서버에서 사용.
+        """
+        _secret = _get_secret(secret_name)
+        if _secret:
+            st.caption(f"🔒 {label} — 운영자 키 구성됨 (서버 보관, 입력 불필요)")
+            return _secret
+        return st.text_input(label, value="", type="password",
+                             help=help_txt, key=f"key_{secret_name}")
+
     with st.expander("⚙️ API 키 설정", expanded=False):
-        kakao_key = st.text_input(
-            "카카오 REST API 키",
-            value=_get_secret("KAKAO_API_KEY"),
-            type="password",
-            help="카카오 개발자 콘솔에서 발급한 REST API 키 (필수)",
+        st.caption(
+            "🔐 입력한 키는 **현재 브라우저 세션에서만** 사용되며 서버·로그에 "
+            "저장되지 않습니다. **필수 키는 카카오 1개**이며, 나머지는 없어도 "
+            "동작합니다 (있으면 팩터 정확도 ↑)."
         )
-        data_go_kr_key = st.text_input(
-            "공공데이터포털 API 키",
-            value=_get_secret("DATA_GO_KR_API_KEY"),
-            type="password",
-            help="data.go.kr에서 발급한 인증키 (소득·월세 수집용, 선택)",
+        kakao_key = _key_field(
+            "카카오 REST API 키 (필수)", "KAKAO_API_KEY",
+            "카카오 개발자 콘솔(developers.kakao.com)에서 무료 발급",
         )
-        vworld_key = st.text_input(
-            "Vworld API 키",
-            value=_get_secret("VWORLD_API_KEY"),
-            type="password",
-            help="용도지역 필터링 (vworld.kr에서 발급, 선택). 미입력 시 OSM 데이터로 대체.",
+        _show_optional = st.toggle(
+            "선택 키 입력 (소득·월세·용도지역·상가·실인구)",
+            value=False,
+            help="미입력 시 해당 팩터는 proxy/OSM 데이터로 대체되거나 제외됩니다",
         )
-        building_key = st.text_input(
-            "건축물대장 API 키",
-            value=_get_secret("BUILDING_API_KEY"),
-            type="password",
-            help="상가건물 분석 (data.go.kr 건축HUB, 선택)",
-        )
-        sgis_key = st.text_input(
-            "SGIS 서비스ID (Consumer Key)",
-            value=_get_secret("SGIS_CONSUMER_KEY"),
-            type="password",
-            help="통계청 SGIS 실인구 데이터 (sgis.kostat.go.kr에서 발급, 선택)",
-        )
-        sgis_secret = st.text_input(
-            "SGIS 보안KEY (Consumer Secret)",
-            value=_get_secret("SGIS_CONSUMER_SECRET"),
-            type="password",
-            help="통계청 SGIS API 보안키",
-        )
+        if _show_optional:
+            data_go_kr_key = _key_field(
+                "공공데이터포털 API 키", "DATA_GO_KR_API_KEY",
+                "data.go.kr 인증키 — 소득·월세 팩터",
+            )
+            vworld_key = _key_field(
+                "Vworld API 키", "VWORLD_API_KEY",
+                "용도지역 하드 필터 — 미입력 시 OSM 대체",
+            )
+            building_key = _key_field(
+                "건축물대장 API 키", "BUILDING_API_KEY",
+                "상가건물 밀집도 팩터 (data.go.kr 건축HUB)",
+            )
+            sgis_key = _key_field(
+                "SGIS 서비스ID (Consumer Key)", "SGIS_CONSUMER_KEY",
+                "통계청 실인구 — 미입력 시 아파트 proxy 대체",
+            )
+            sgis_secret = _key_field(
+                "SGIS 보안KEY (Consumer Secret)", "SGIS_CONSUMER_SECRET",
+                "통계청 SGIS API 보안키",
+            )
+        else:
+            # 토글 접힘 상태에서도 Secrets 운영자 키는 계속 사용
+            data_go_kr_key = _get_secret("DATA_GO_KR_API_KEY")
+            vworld_key     = _get_secret("VWORLD_API_KEY")
+            building_key   = _get_secret("BUILDING_API_KEY")
+            sgis_key       = _get_secret("SGIS_CONSUMER_KEY")
+            sgis_secret    = _get_secret("SGIS_CONSUMER_SECRET")
 
     # 입지 분석 모드 입력
     if app_mode == "🔍 입지 분석":
@@ -467,11 +487,39 @@ st.caption("한국 전 지역을 대상으로 업종 프리셋·키워드 기반
 
 if not run_btn and st.session_state["analysis_cache"] is None:
     st.info("왼쪽 사이드바에서 **API 키 · 지역 · 업종 · 셀 크기**를 설정하고 **🔍 분석 시작**을 눌러보세요.")
+
+    # ── 데모 모드: API 키 없이 저장된 분석 결과 체험 ──
+    from src import demo_bundle as _demo
+    if _demo.demo_available():
+        _meta = _demo.demo_meta()
+        _dc1, _dc2 = st.columns([1, 2])
+        with _dc1:
+            if st.button(
+                "🎬 데모 결과 바로 보기",
+                type="primary",
+                use_container_width=True,
+                help="API 키 없이 저장된 분석 결과로 전체 화면을 체험합니다",
+            ):
+                st.session_state["analysis_cache"] = _demo.load_demo_bundle()
+                st.rerun()
+        with _dc2:
+            st.caption(
+                f"API 키 없이 체험: **{_meta.get('region','')} / {_meta.get('label','')}** "
+                f"분석 결과 (저장 {_meta.get('saved_at','')})"
+            )
+        st.markdown("---")
+
+    if _get_secret("KAKAO_API_KEY"):
+        st.success(
+            "🔑 이 배포본은 **운영자 키가 서버에 구성**되어 있어, "
+            "방문자는 API 키 입력 없이 바로 분석할 수 있습니다."
+        )
+
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("""
         **사용 흐름**
-        1. `⚙️ API 키 설정` expander에서 카카오 REST API 키 입력 (필수)
+        1. `⚙️ API 키 설정`에서 **카카오 키 1개** 입력 — 필수 키는 이것뿐
         2. 시/도 → 구/군/시 다중 선택 (여러 구 통합 분석 가능)
         3. 업종 프리셋 또는 자유 키워드 (예: `도자기 공방`, `네일샵`) 선택
         4. 셀 크기 선택 (250 / 500 / 1000 / 2000m — 작을수록 정밀)
@@ -479,7 +527,7 @@ if not run_btn and st.session_state["analysis_cache"] is None:
         """)
     with c2:
         st.markdown("""
-        **선택 API 키** (있으면 분석 정확도 ↑)
+        **선택 API 키** (없어도 동작 — 있으면 팩터 정확도 ↑)
         - **공공데이터포털**: 아파트 실거래가 → 소득·월세 팩터
         - **Vworld**: 용도지역 데이터 → 입점 가능 지역 하드 필터
         - **건축물대장**: 상가건물 밀집도 팩터
@@ -488,6 +536,14 @@ if not run_btn and st.session_state["analysis_cache"] is None:
         API 키 발급: 각 사이트 회원가입 → 서비스 신청. 이 앱은 입력받은 키를
         **현재 세션에서만 사용**하며 서버나 로그에 저장하지 않습니다.
         """)
+
+    from src.explanations import FACTOR_GUIDE, SCORING_EXPLAINED
+    with st.expander("📖 점수는 어떻게 계산되나요? — 11팩터 모델 쉽게 이해하기"):
+        st.markdown(SCORING_EXPLAINED)
+        st.markdown("#### 11개 팩터 사전")
+        st.markdown("| 팩터 | 무엇을 재나 | 왜 중요한가 | 출처 |\n|---|---|---|---|\n" + "\n".join(
+            f"| **{n}** | {w} | {y} | {src} |" for n, w, y, src in FACTOR_GUIDE
+        ))
     st.stop()
 
 # ─────────────────────────────────────────────────────────
@@ -887,6 +943,14 @@ roads           = cache.get("roads")
 n_hotspot = (cluster_summary["type"] == "핫스팟").sum()
 n_gap     = gap_gdf["is_gap"].sum()
 
+# 데모 번들로 로드된 결과임을 표시
+if cache.get("_demo"):
+    st.info(
+        "🎬 **데모 모드** — 미리 저장된 분석 결과를 보고 있습니다 "
+        f"({cache.get('region','')} / {cache.get('label','')}). "
+        "직접 분석하려면 사이드바에 카카오 API 키를 입력하고 🔍 분석 시작을 누르세요."
+    )
+
 # ─── v5.0: 결과 요약 헤드라인 ─────────────────────────────
 st.markdown("---")
 if len(top) > 0:
@@ -923,6 +987,24 @@ if len(top) > 0:
         _hints.append(f"교통 점수 **{_top1_trans}**")
     if n_gap > 0:
         _hints.append(f"경쟁 공백 지역 **{n_gap}셀** 발견")
+
+    # 강점 팩터 자동 서술 — 전체 격자 대비 1위 셀의 percentile 상위 3개
+    _FACTOR_COLS = {
+        "population": "인구", "floating": "유동", "workplace": "직장",
+        "transport_score": "접근성", "parking_cnt": "주차", "diversity": "다양성",
+        "income": "소득", "commercial_cnt": "상가 밀집", "road_score": "도로 품질",
+    }
+    _strengths = []
+    for _col, _name in _FACTOR_COLS.items():
+        if _col in scored.columns and _col in _top1.index:
+            _vals = scored[_col].astype(float)
+            if _vals.max() > _vals.min():
+                _pct = float((_vals < float(_top1[_col])).mean())
+                if _pct >= 0.80:
+                    _strengths.append((_pct, f"{_name}(상위 {100 - _pct * 100:.0f}%)"))
+    _strengths.sort(reverse=True)
+    if _strengths:
+        _hints.append("강점: " + " · ".join(t for _, t in _strengths[:3]))
 
     # 헤더: 주소 있으면 주소 사용, 없으면 격자 ID
     _top1_title = _top1_addr if _top1_addr else f"격자 `{_top1_grid}`"
@@ -1006,6 +1088,10 @@ if profile:
                 st.markdown(f"**용도지역 하드 필터**: 활성 (입점불가 {n_blocked}셀 제거)")
             else:
                 st.markdown("**용도지역 하드 필터**: 비활성 (Vworld API 키 필요)")
+
+from src.explanations import HOW_TO_READ_RESULTS as _HOWTO
+with st.expander("📖 결과 화면 읽는 법 (처음이라면 펼쳐보세요)"):
+    st.markdown(_HOWTO)
 
 st.markdown("---")
 
@@ -1223,3 +1309,18 @@ with _dl2:
         use_container_width=True,
         help="브라우저에서 바로 열리는 interactive 지도. Slack/이메일 공유용.",
     )
+
+# ─────────────────────────────────────────────────────────
+# 데모 번들 관리 — 직접 분석한 결과를 데모로 저장 (로컬 전용)
+# ─────────────────────────────────────────────────────────
+if not cache.get("_demo"):
+    with st.expander("🎬 이 결과를 데모 번들로 저장 (개발자용)"):
+        st.caption(
+            "현재 분석 결과를 data/demo/ 에 저장합니다. 저장 후 git commit·push 하면 "
+            "배포 앱에서 방문자가 **API 키 없이** 이 결과를 체험할 수 있습니다. "
+            "Streamlit Cloud에서 저장한 파일은 재부팅 시 사라지므로 **로컬 실행에서 저장**하세요."
+        )
+        if st.button("💾 데모 번들 저장", use_container_width=False):
+            from src import demo_bundle as _demo_save
+            _dir = _demo_save.save_demo_bundle(cache)
+            st.success(f"저장 완료: `{_dir}` — git add data/demo && commit 후 push하면 배포에 반영됩니다.")
