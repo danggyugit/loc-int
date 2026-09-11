@@ -39,3 +39,4 @@ data/processed/
 Thumbs.db
 .DS_Store
 .venv/
+data/_last_run/

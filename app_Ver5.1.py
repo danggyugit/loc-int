@@ -490,8 +490,27 @@ st.caption("한국 전 지역을 대상으로 업종 프리셋·키워드 기반
 if not run_btn and st.session_state["analysis_cache"] is None:
     st.info("왼쪽 사이드바에서 **API 키 · 지역 · 업종 · 셀 크기**를 설정하고 **🔍 분석 시작**을 눌러보세요.")
 
-    # ── 데모 모드: API 키 없이 저장된 분석 결과 체험 ──
+    # ── 마지막 분석 결과 복원 (세션 끊김·재배포 후) ──
     from src import demo_bundle as _demo
+    _last_meta = _demo.demo_meta(_demo.LAST_RUN_DIR)
+    if _last_meta:
+        _rc1, _rc2 = st.columns([1, 2])
+        with _rc1:
+            if st.button("🔁 마지막 분석 결과 복원", use_container_width=True):
+                _restored = _demo.load_demo_bundle(_demo.LAST_RUN_DIR)
+                if _restored:
+                    _restored.pop("_demo", None)  # 데모 배너 없이 원본처럼 표시
+                    st.session_state["analysis_cache"] = _restored
+                    st.rerun()
+        with _rc2:
+            st.caption(
+                f"연결이 끊겨도 마지막 결과는 서버에 남습니다: "
+                f"**{_last_meta.get('region','')} / {_last_meta.get('label','')}** "
+                f"({_last_meta.get('saved_at','')})"
+            )
+        st.markdown("---")
+
+    # ── 데모 모드: API 키 없이 저장된 분석 결과 체험 ──
     if _demo.demo_available():
         _meta = _demo.demo_meta()
         _dc1, _dc2 = st.columns([1, 2])
@@ -888,6 +907,16 @@ if run_btn:
         st.session_state["selected_rank"] = None
         st.session_state["map_center"]    = None
         st.session_state["map_zoom"]      = 13
+
+        # 세션 끊김 대비 자동저장 — 재배포·재접속 후에도 '마지막 결과 복원' 가능
+        # (Streamlit Cloud 디스크는 재부팅 전까지 유지되므로 세션 유실은 커버됨)
+        try:
+            from src import demo_bundle as _autosave
+            _autosave.save_demo_bundle(
+                st.session_state["analysis_cache"], dest_dir=_autosave.LAST_RUN_DIR
+            )
+        except Exception as _e:  # noqa: BLE001 — 자동저장 실패가 분석을 막으면 안 됨
+            log.warning(f"마지막 분석 자동저장 실패: {_e}")
 
     except Exception as e:
         # 단계 컨텍스트 + 흔한 원인에 대한 힌트 제공

@@ -31,9 +31,9 @@ def demo_available() -> bool:
     return (DEMO_DIR / _PKL).exists()
 
 
-def demo_meta() -> dict:
-    """데모 번들 메타 정보 (region, label, saved_at). 없으면 {}."""
-    meta_path = DEMO_DIR / _META
+def demo_meta(src_dir: Path | None = None) -> dict:
+    """번들 메타 정보 (region, label, saved_at). 없으면 {}."""
+    meta_path = (Path(src_dir) if src_dir else DEMO_DIR) / _META
     if not meta_path.exists():
         return {}
     try:
@@ -106,9 +106,14 @@ def bundle_to_zip_bytes(cache: dict) -> bytes:
         return buf.getvalue()
 
 
-def load_demo_bundle() -> dict | None:
-    """데모 번들을 analysis_cache 형식으로 복원한다. 없으면 None."""
-    pkl_path = DEMO_DIR / _PKL
+def load_demo_bundle(src_dir: Path | None = None) -> dict | None:
+    """번들을 analysis_cache 형식으로 복원한다. 없으면 None.
+
+    Args:
+        src_dir: 번들 위치 (기본 data/demo/). 마지막 분석 자동복원 등에 사용.
+    """
+    src = Path(src_dir) if src_dir else DEMO_DIR
+    pkl_path = src / _PKL
     if not pkl_path.exists():
         return None
     with open(pkl_path, "rb") as f:
@@ -118,6 +123,10 @@ def load_demo_bundle() -> dict | None:
     for key in _PATH_KEYS:
         name = bundle.get(key)
         if name:
-            p = DEMO_DIR / Path(name).name
+            p = src / Path(name).name
             bundle[key] = str(p) if p.exists() else None
     return bundle
+
+
+# 마지막 분석 자동저장 위치 (세션 끊김 대비 — 데모와 별개, gitignore 대상)
+LAST_RUN_DIR = DEMO_DIR.parent / "_last_run"
