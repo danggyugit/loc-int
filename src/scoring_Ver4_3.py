@@ -300,19 +300,26 @@ def calc_score(
     # 경쟁 페널티
     comp_effect = _apply_competition_effect(comp_norm, comp_mode, comp_thr)
 
-    out["score"] = (
-        pop_adjusted   * weights["population"]
-        + float_norm   * weights["floating"]
-        + work_norm    * weights["workplace"]
-        - comp_effect  * weights["competitor"]
-        + acc_norm     * weights["accessibility"]
-        + park_norm    * weights["parking"]
-        + div_norm     * weights["diversity"]
-        + income_norm  * weights["income"]
-        - rent_norm    * weights["rent"]
-        + comm_norm    * weights["commercial"]
-        + road_norm    * weights["road_quality"]
-    )
+    # 팩터별 기여도 — "왜 이 셀의 점수가 높은가" 시각화(점수 분해)용.
+    # 경쟁·임대는 감점이므로 음수로 저장. 최종 score는 clip+normalize를 거치므로
+    # 합이 표시 점수와 일치하지는 않지만, 구성 비율은 정확하다.
+    _contribs = {
+        "population":    pop_adjusted * weights["population"],
+        "floating":      float_norm   * weights["floating"],
+        "workplace":     work_norm    * weights["workplace"],
+        "competitor":    -comp_effect * weights["competitor"],
+        "accessibility": acc_norm     * weights["accessibility"],
+        "parking":       park_norm    * weights["parking"],
+        "diversity":     div_norm     * weights["diversity"],
+        "income":        income_norm  * weights["income"],
+        "rent":          -rent_norm   * weights["rent"],
+        "commercial":    comm_norm    * weights["commercial"],
+        "road_quality":  road_norm    * weights["road_quality"],
+    }
+    for _k, _v in _contribs.items():
+        out[f"contrib_{_k}"] = _v
+
+    out["score"] = sum(_contribs.values())
 
     out["score"] = out["score"].clip(lower=0)
     out["score"] = normalize(out["score"])

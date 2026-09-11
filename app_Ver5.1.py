@@ -1036,6 +1036,14 @@ _row2[3].metric("상가건물",        f"{len(buildings) if buildings is not Non
 _row2[4].metric("핫스팟 클러스터", f"{n_hotspot}개")
 _row2[5].metric("경쟁 공백 지역",  f"{n_gap}셀")
 
+# 팩터 한글 라벨 (가중치 차트·점수 분해 공용)
+_FACTOR_KO = {
+    "population": "인구", "floating": "유동", "workplace": "직장",
+    "competitor": "경쟁", "accessibility": "접근성", "parking": "주차",
+    "diversity": "다양성", "income": "소득", "rent": "임대",
+    "commercial": "상가", "road_quality": "도로",
+}
+
 # 적용된 점수화 프로파일 정보
 if profile:
     _mode_label = {
@@ -1053,10 +1061,10 @@ if profile:
     }
     _demo_label = {
         "all":                "전 연령",
-        "children":           "유소년(0~14세) 가중",
+        "children":           "유소년(0–14세) 가중",
         "elderly":            "고령(65세+) 가중",
-        "young_adult":        "생산가능인구(15~64세) 가중",
-        "children_and_parent": "유소년(5~13) + 부모(35~45) 가중",
+        "young_adult":        "생산가능인구(15–64세) 가중",
+        "children_and_parent": "유소년(5–13) + 부모(35–45) 가중",
     }
     comp_mode = profile.get("competition_mode", "tolerate")
     demo_target = profile.get("demographic_target", "all")
@@ -1069,19 +1077,23 @@ if profile:
         st.caption(profile.get("description", ""))
         w = profile.get("weights", {})
         if w:
-            st.markdown(
-                f"가중치: 인구 **{w.get('population',0):.0%}** | "
-                f"유동 **{w.get('floating',0):.0%}** | "
-                f"직장 **{w.get('workplace',0):.0%}** | "
-                f"경쟁 **{w.get('competitor',0):.0%}** | "
-                f"접근성 **{w.get('accessibility',0):.0%}** | "
-                f"주차 **{w.get('parking',0):.0%}** | "
-                f"다양성 **{w.get('diversity',0):.0%}** | "
-                f"소득 **{w.get('income',0):.0%}** | "
-                f"임대 **{w.get('rent',0):.0%}** | "
-                f"상가 **{w.get('commercial',0):.0%}** | "
-                f"도로 **{w.get('road_quality',0):.0%}**"
+            import plotly.express as px_w
+            _wdf = pd.DataFrame(
+                [(_FACTOR_KO.get(k, k), v * 100, k in ("competitor", "rent"))
+                 for k, v in w.items() if v > 0],
+                columns=["factor", "weight", "penalty"],
+            ).sort_values("weight")
+            _wfig = px_w.bar(
+                _wdf, x="weight", y="factor", orientation="h",
+                color="penalty", text_auto=".0f",
+                color_discrete_map={False: "#2b6cb0", True: "#e53e3e"},
+                labels={"weight": "가중치 (%)", "factor": ""},
             )
+            _wfig.update_layout(
+                height=320, showlegend=False, margin={"t": 10, "b": 30},
+            )
+            st.plotly_chart(_wfig, use_container_width=True)
+            st.caption("🔵 가점 팩터 · 🔴 감점 방향 팩터(경쟁·임대) — 업종 프로파일이 정의한 중요도입니다.")
             # 용도지역 필터 상태 표시
             if land_use is not None and len(land_use) > 0:
                 n_blocked = (scored["zone_score"] == 0.0).sum() if "zone_score" in scored.columns else 0
@@ -1133,8 +1145,8 @@ with map_col:
 with chart_col:
     st.subheader("📊 후보지 분석")
     # 3개 차트를 탭으로 구성: 바·레이더·분포
-    _tab_bar, _tab_radar, _tab_dist = st.tabs(
-        ["🏆 상위 점수", "🧭 1위 프로필", "📈 점수 분포"]
+    _tab_bar, _tab_radar, _tab_dist, _tab_comp = st.tabs(
+        ["🏆 상위 점수", "🧭 1위 프로필", "📈 점수 분포", "🧮 점수 구성"]
     )
     with _tab_bar:
         st.image(chart_path, use_container_width=True)
@@ -1151,6 +1163,36 @@ with chart_col:
             st.caption("1위 점수의 희소성을 히스토그램으로 확인.")
         else:
             st.info("분포 차트 없음")
+    with _tab_comp:
+        # 점수 분해 — 각 후보지 점수가 어느 팩터에서 왔는가 (calc_score의 실제 기여도)
+        _ccols = [c for c in top.columns if c.startswith("contrib_")]
+        if _ccols:
+            import plotly.express as px_c
+            _rows = []
+            for _, _r in top.iterrows():
+                for c in _ccols:
+                    _rows.append({
+                        "후보지": f"#{int(_r['rank'])}",
+                        "팩터": _FACTOR_KO.get(c.removeprefix("contrib_"), c),
+                        "기여도": float(_r[c]),
+                    })
+            _cdf = pd.DataFrame(_rows)
+            _cfig = px_c.bar(
+                _cdf, x="기여도", y="후보지", color="팩터",
+                orientation="h", barmode="relative",
+                category_orders={"후보지": [f"#{i}" for i in sorted(top['rank'].astype(int))][::-1]},
+            )
+            _cfig.add_vline(x=0, line_color="#666", line_width=1)
+            _cfig.update_layout(height=420, margin={"t": 10, "b": 30},
+                                legend={"font": {"size": 10}})
+            st.plotly_chart(_cfig, use_container_width=True)
+            st.caption(
+                "각 후보지의 점수가 **어느 팩터에서 왔는지** 분해한 것입니다 "
+                "(0 왼쪽 = 경쟁·임대 감점). 같은 상위권이라도 '인구로 큰 곳' vs "
+                "'접근성으로 큰 곳'처럼 성격이 다름을 확인하세요."
+            )
+        else:
+            st.info("점수 구성 데이터가 없습니다 — 재분석 시 생성됩니다 (구버전 결과).")
 
 # 전체 격자 상세 테이블 (v4.4: 후보지 + 비후보지 모두 표시)
 st.markdown("---")
