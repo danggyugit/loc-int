@@ -293,6 +293,12 @@ with st.sidebar:
             preset  = PRESETS[preset_label]
             keyword = None
             label   = preset_label
+            # Why: 카카오 카테고리 코드(CE7 등)가 없는 프리셋(예: 도자기 공방)은
+            #      카테고리 검색이 불가 → 경쟁업체 수집은 키워드 검색으로 전환.
+            #      preset 코드는 점수화 프로파일 선택에 그대로 사용된다.
+            from config import KAKAO_CATEGORY as _KC
+            if preset not in _KC:
+                keyword = preset_label
         else:
             keyword = st.text_input(
                 "업종 키워드",
@@ -688,6 +694,19 @@ if run_btn:
                 roads_l.append(_json_to_gdf(cached.get("roads")))
                 pop_source = cached.get("pop_source", pop_source)
 
+            # 수집 유효성 검사 — 핵심 데이터가 전부 비면 이후 단계가 무의미
+            # (대표 원인: 카카오 API 키 무효/쿼터 소진)
+            def _empty(gdf_list):
+                return all(g is None or len(g) == 0 for g in gdf_list)
+
+            if _empty(competitors) and _empty(transports) and _empty(populations):
+                st.error(
+                    "❌ 데이터가 하나도 수집되지 않았습니다.\n\n"
+                    "가장 흔한 원인: **카카오 API 키가 유효하지 않거나 일일 쿼터 소진**. "
+                    "⚙️ API 키 설정을 확인하고 다시 시도하세요."
+                )
+                st.stop()
+
             # 병합 — 카카오 ID 보유 데이터셋은 인접 구 경계 중첩 시 중복 들어오므로 dedup
             current_step = "Step 2/8 · 데이터 병합·중복 제거"
             st.write(f"🔗 {current_step}")
@@ -972,8 +991,16 @@ land_use        = cache.get("land_use")
 buildings       = cache.get("buildings")
 roads           = cache.get("roads")
 
-n_hotspot = (cluster_summary["type"] == "핫스팟").sum()
-n_gap     = gap_gdf["is_gap"].sum()
+# None 가드 — 과거 캐시/부분 실패 등 어떤 경로로든 None이 와도 렌더가 죽지 않게
+import geopandas as _gpd_guard
+def _ensure_gdf(v):
+    return v if v is not None else _gpd_guard.GeoDataFrame()
+competitor = _ensure_gdf(competitor)
+transport  = _ensure_gdf(transport)
+population = _ensure_gdf(population)
+
+n_hotspot = (cluster_summary["type"] == "핫스팟").sum() if cluster_summary is not None else 0
+n_gap     = gap_gdf["is_gap"].sum() if gap_gdf is not None else 0
 
 # 데모 번들로 로드된 결과임을 표시
 if cache.get("_demo"):
