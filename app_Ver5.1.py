@@ -273,6 +273,24 @@ with st.sidebar:
             sgis_key       = _get_secret("SGIS_CONSUMER_KEY")
             sgis_secret    = _get_secret("SGIS_CONSUMER_SECRET")
 
+        st.markdown("---")
+        if st.button("🩺 API 연결 진단", use_container_width=True,
+                     help="각 API를 1회씩 호출해 키·서버 상태를 확인합니다 (약 10초)"):
+            from src.api_health import run_all
+            with st.spinner("5개 API 확인 중..."):
+                _diag = run_all(kakao_key, data_go_kr_key, vworld_key,
+                                building_key, sgis_key, sgis_secret)
+            _ok_essential = True
+            for _name, _ok, _msg, _required in _diag:
+                _icon = "✅" if _ok else ("❌" if _required else "⚠️")
+                st.caption(f"{_icon} **{_name}**: {_msg}")
+                if _required and not _ok:
+                    _ok_essential = False
+            if _ok_essential:
+                st.success("필수 API(카카오) 정상 — 분석 실행 가능합니다.")
+            else:
+                st.error("필수 API(카카오)에 문제가 있어 분석이 불가합니다.")
+
     # 입지 분석 모드 입력
     if app_mode == "🔍 입지 분석":
         st.markdown("---")

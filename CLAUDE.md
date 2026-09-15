@@ -16,6 +16,8 @@
 | 메인 앱 | `app_Ver5.1.py` | v4.0~v5.0은 이력 보존용 |
 | 데모 모드 | `src/demo_bundle.py` | 분석 결과를 data/demo/ 번들로 저장/복원 — API 키 없이 결과 체험 (2026-09-11 추가). 번들 생성은 로컬 분석 후 결과 하단 "🎬 데모 번들로 저장" 버튼 |
 | 앱 내 설명 | `src/explanations.py` | 11팩터 사전·점수 원리·결과 읽는 법 markdown — 랜딩/결과 expander에서 사용 |
+| API 진단 | `src/api_health.py` | 5개 API 1회 호출 진단 — 키 expander의 "🩺 API 연결 진단" 버튼 |
+| E2E 테스트 | `scripts/e2e_mock_test.py` | 수집만 모의로 대체하고 Step 2~8 + 결과 렌더 완주 검증 — 배포 전 필수 실행 |
 | 스모크 테스트 | `scripts/smoke_test.py` | 랜딩 AppTest + demo_bundle round-trip. 실행: `.venv/bin/python scripts/smoke_test.py` |
 | 점수화 | `src/scoring_Ver4_3.py` | 11팩터 |
 | 시각화 | `src/visualizer_Ver4_2.py` | folium + matplotlib |
