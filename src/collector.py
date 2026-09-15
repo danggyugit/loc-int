@@ -34,6 +34,12 @@ KAKAO_TRANSPORT_CATEGORY = {
 # 1. 행정경계 자동 수집 (OpenStreetMap)
 # ─────────────────────────────────────────────────────────
 
+# OSM(Overpass) 회로 차단기 — Streamlit Cloud에서 Overpass가 상시 차단되어
+# 매 분석마다 60~120초를 낭비함. 한 번 연결 실패가 확인되면 프로세스 수명
+# 동안 OSM 조회를 건너뛴다 (재부팅 시 자동 리셋).
+OSM_CIRCUIT = {"tripped": False}
+
+
 def _run_with_deadline(fn, seconds: float):
     """fn을 daemon thread에서 실행하고 데드라인 초과 시 TimeoutError.
 

@@ -511,7 +511,8 @@ if app_mode == "🗺️ 전국 탐색":
 
 st.caption("한국 전 지역을 대상으로 업종 프리셋·키워드 기반 입지 점수화를 11개 팩터로 수행합니다.")
 
-if not run_btn and st.session_state["analysis_cache"] is None:
+if (not run_btn and st.session_state["analysis_cache"] is None
+        and not st.session_state.get("analysis_request")):
     st.info("왼쪽 사이드바에서 **API 키 · 지역 · 업종 · 셀 크기**를 설정하고 **🔍 분석 시작**을 눌러보세요.")
 
     # ── 마지막 분석 결과 복원 (세션 끊김·재배포 후) ──
@@ -629,6 +630,22 @@ if run_btn:
             f"셀 크기를 키우거나(예: {cell_size}m → {cell_size*2}m) 구를 줄이는 것을 권장합니다."
         )
 
+    # 검증 통과 → 분석 요청을 세션에 기록 (완료/오류 시 해제)
+    st.session_state["analysis_request"] = True
+
+# ─────────────────────────────────────────────────────────
+# 분석 실행 — 버튼 클릭 또는 미완료 요청 자동 재개
+# Why: 연결이 잠깐 출렁이면 Streamlit이 스크립트를 재실행하며 버튼 상태가
+#      사라져 분석이 중단됨(진행되다 멈춤 증상). 요청 플래그를 세션에 남겨
+#      완료될 때까지 자동으로 이어서 실행한다. 수집 캐시 덕에 재개는 빠름.
+# ─────────────────────────────────────────────────────────
+if st.session_state.get("analysis_request"):
+    if not run_btn:
+        st.info(
+            "🔁 진행 중이던 분석 요청을 **자동으로 이어서** 실행합니다 — "
+            "연결이 끊겨도 다시 누를 필요 없습니다 (수집 캐시로 점점 빨라짐)."
+        )
+
     # v4.9: session_keys로 전환 (os.environ 프로세스 전역 오염 제거)
     from src import session_keys
     session_keys.set_keys(
@@ -718,6 +735,7 @@ if run_btn:
                 return all(g is None or len(g) == 0 for g in gdf_list)
 
             if _empty(competitors) and _empty(transports) and _empty(populations):
+                st.session_state.pop("analysis_request", None)
                 st.error(
                     "❌ 데이터가 하나도 수집되지 않았습니다.\n\n"
                     "가장 흔한 원인: **카카오 API 키가 유효하지 않거나 일일 쿼터 소진**. "
@@ -955,7 +973,13 @@ if run_btn:
         except Exception as _e:  # noqa: BLE001 — 자동저장 실패가 분석을 막으면 안 됨
             log.warning(f"마지막 분석 자동저장 실패: {_e}")
 
+        st.session_state.pop("analysis_request", None)  # 완료 — 재개 불필요
+
     except Exception as e:
+        # Streamlit 제어 예외(재실행/중단)는 그대로 통과 — 플래그 유지로 자동 재개
+        if type(e).__name__ in ("RerunException", "StopException"):
+            raise
+        st.session_state.pop("analysis_request", None)  # 실제 오류 — 무한 재시도 방지
         # 단계 컨텍스트 + 흔한 원인에 대한 힌트 제공
         err_str = str(e)
         err_low = err_str.lower()

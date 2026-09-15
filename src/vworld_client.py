@@ -270,6 +270,11 @@ def _get_osm_landuse(
         "https://overpass.kumi.systems/api/interpreter",
     ]
 
+    from src.collector import OSM_CIRCUIT
+    if OSM_CIRCUIT["tripped"]:
+        log.info("OSM 회로 차단 상태 — landuse 조회 생략")
+        return None
+
     log.info("Overpass API로 OSM landuse 조회 시작")
 
     data = None
@@ -289,15 +294,11 @@ def _get_osm_landuse(
             continue
 
     if data is None:
-        log.warning("Overpass 직접 호출 실패 → osmnx 폴백 시도 (최대 60초)")
-        try:
-            from src.collector import _run_with_deadline
-            return _run_with_deadline(
-                lambda: _get_osm_landuse_via_osmnx(boundary_gdf), 60
-            )
-        except Exception as e:
-            log.warning(f"osmnx 폴백 실패/지연 ({type(e).__name__}) → 용도지역 없이 진행")
-            return None
+        # 두 미러 모두 실패 = 이 환경에서 Overpass 접근 불가 → 회로 차단.
+        # osmnx 폴백도 같은 Overpass를 쓰므로 시도 자체가 60초 낭비 — 생략.
+        OSM_CIRCUIT["tripped"] = True
+        log.warning("Overpass 접근 불가 → 이번 세션 동안 OSM 조회 생략 (용도지역 없이 진행)")
+        return None
 
     elements = data.get("elements", [])
     if not elements:

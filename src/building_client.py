@@ -366,7 +366,10 @@ def get_road_network(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame | None:
     # Why: Overpass가 지연/제한되면 기본 180s+재시도 동안 분석 전체가 멈춘 듯
     #      보임 → 120초 하드 데드라인 후 도로 팩터만 건너뛴다 (score에서 자동 제외).
     try:
-        from src.collector import _run_with_deadline
+        from src.collector import OSM_CIRCUIT, _run_with_deadline
+        if OSM_CIRCUIT["tripped"]:
+            log.info("OSM 회로 차단 상태 — 도로망 조회 생략")
+            return None
 
         ox.settings.requests_timeout = 60
         log.info("OSM 도로 네트워크 조회 시작 (최대 120초)")
@@ -375,6 +378,8 @@ def get_road_network(boundary_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame | None:
         )
         edges = ox.graph_to_gdfs(G, nodes=False)
     except Exception as e:
+        from src.collector import OSM_CIRCUIT
+        OSM_CIRCUIT["tripped"] = True  # 도로 실패도 회로 차단 (다음 분석 시간 절약)
         log.warning(f"OSM 도로 조회 실패/지연 ({type(e).__name__}: {e}) → 도로 팩터 제외")
         return None
 

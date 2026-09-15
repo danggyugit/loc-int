@@ -121,6 +121,28 @@ def run() -> None:
     assert any("데모" in (l or "") for l in labels), "데모 번들 버튼 미렌더"
     print("PASS: 데모 번들 UI 렌더")
 
+    # 완료 후 요청 플래그가 해제되어야 함 (무한 재실행 방지)
+    assert "analysis_request" not in at.session_state or not at.session_state["analysis_request"], "완료 후 analysis_request 미해제"
+    print("PASS: 완료 시 요청 플래그 해제")
+
+    # ── 자동 재개 시나리오: 연결 끊김으로 세션이 재실행된 상황 재현 ──
+    # (요청 플래그만 남고 버튼 클릭 없음 → 분석이 스스로 이어져야 함)
+    at.session_state["analysis_cache"] = None
+    at.session_state["analysis_request"] = True
+    at.run()
+    assert not at.exception, f"자동 재개 크래시: {at.exception[0].message}"
+    parts2 = []
+    for el in at.main:
+        for attr in ("value", "body", "label"):
+            v = getattr(el, attr, None)
+            if isinstance(v, str):
+                parts2.append(v)
+    body2 = " ".join(parts2)
+    assert "이어서" in body2, "자동 재개 안내 미표시"
+    assert "1위 후보지" in body2, "자동 재개 후 결과 미도달"
+    assert "analysis_request" not in at.session_state or not at.session_state["analysis_request"], "재개 완료 후 플래그 미해제"
+    print("PASS: 자동 재개 — 버튼 재클릭 없이 분석 완주")
+
 
 if __name__ == "__main__":
     run()
